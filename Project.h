@@ -3,15 +3,16 @@
 
 #pragma once
 
-class Project
+#include "EditorTool.h"
+
+class CProject : public CEditorTool
 {
 public:
-    Project();
-    ~Project() = default;
+    CProject(void);
+    ~CProject() = default;
 
-    void Save(void);
-    void Load(const eastl::string& newpath);
-    void New(void);
+    virtual bool Load(const eastl::string& path) override;
+    virtual bool Load(const json& data) override;
 
     void setPath(const eastl::string& newpath);
 public:
