@@ -5,8 +5,9 @@
 #define DEFAULT_GAMEPATH "Data"
 
 eastl::unique_ptr<Editor> Editor::editor;
+std::filesystem::path Editor::curPath;
 
-Editor::Editor()
+Editor::Editor(void)
 {
     int parm;
 
@@ -20,19 +21,8 @@ Editor::Editor()
     else {
         spdlog::set_level(spdlog::level::info);
     }
-    
-    parm = GetParm("-gamepath");
-    if (parm != -1) {
-        gamepath = myargv[parm];
-    }
-    else {
-        gamepath = DEFAULT_GAMEPATH;
-    }
-
-    cProject = eastl::make_unique<Project>();
-    cMap = cProject->mapData;
-    cMap->tileset = cProject->tileset;
     cGUI = eastl::make_unique<GUI>();
+    cGUI->Init("GLNomad Level Editor", 1920, 1080);
 }
 
 Editor::~Editor()
@@ -42,6 +32,52 @@ Editor::~Editor()
 		next = cmd->getNext();
 		delete cmd;
 	}
+}
+
+bool Editor::SaveJSON(const json& data, const eastl::string& path)
+{
+    char *rpath;
+    constexpr const char *dir = "Data/";
+
+    rpath = (char *)alloca(path.size() + strlen(dir) + 1);
+    sprintf(rpath, "%s%s", dir, path.c_str());
+
+    std::ofstream file(rpath, std::ios::out);
+    if (file.fail()) {
+        Printf("Editor::SaveJSON: failed to save json to '%s', std::ofstream failed", path);
+        return false;
+    }
+    file << data;
+    file.close();
+    
+    return true;
+}
+
+bool Editor::LoadJSON(json& data, const eastl::string& path)
+{
+    char *rpath;
+    constexpr const char *dir = "Data/";
+    FILE *fp;
+
+    rpath = (char *)alloca(path.size() + strlen(dir) + 1);
+    sprintf(rpath, "%s%s", dir, path.c_str());
+
+    if (!FileExists(rpath)) {
+        Printf("Editor::LoadJSON: bad json path '%s', file does not exist", path.c_str());
+        return false;
+    }
+    
+    fp = SafeOpenRead(rpath);
+    try {
+        data = json::parse(fp);
+    } catch (const json::exception& e) {
+        Printf("JSON parse failure, nlohmann::json::exception =>\n\tid: %i\n\twhat: %s", e.id, e.what());
+        fclose(fp);
+        return false;
+    }
+    fclose(fp);
+
+    return true;
 }
 
 void Editor::LoadPreferences(void)
@@ -84,24 +120,7 @@ void Editor::SavePreferences(void)
     file.close();
 }
 
-/*
-Editor::SaveFileCache: saves the editor's file list to a json cache file
-*/
-void Editor::SaveFileCache(void)
-{
-    json data;
-
-    Printf("Saving json file cache...");
-
-    std::ofstream file("Data/filecache.json", std::ios::out);
-    if (file.fail()) {
-        Error("Failed to open file cache in write mode");
-    }
-
-    file << data;
-}
-
-static void InitFilesList(eastl::vector<eastl::string>& list, const std::filesystem::path& path, const eastl::vector<eastl::string>& exts)
+void Editor::ListFiles(eastl::vector<eastl::string>& fileList, const std::filesystem::path& path, const eastl::vector<eastl::string>& exts)
 {
     auto isExt = [&](const char *str) {
         for (const auto& it : exts) {
@@ -114,25 +133,12 @@ static void InitFilesList(eastl::vector<eastl::string>& list, const std::filesys
 
     for (const auto& i : std::filesystem::directory_iterator{path}) {
         if (i.is_directory()) {
-            InitFilesList(list, i.path(), exts);
+            ListFiles(fileList, i.path(), exts);
         }
         else if (isExt(i.path().c_str()) && !i.is_directory()) {
-            list.emplace_back(i.path().c_str());
+            fileList.emplace_back(i.path().c_str());
         }
     }
-}
-
-void Editor::InitFiles(void)
-{
-    curPath = std::filesystem::current_path();
-
-    textureFiles.reserve(64);
-    recentFiles.reserve(64);
-
-    InitFilesList(textureFiles, curPath, {".png", ".jpg", ".jpeg", ".bmp"});
-    InitFilesList(recentFiles, curPath, {".nlp"});
-
-//    SaveFileCache();
 }
 
 void Editor::Init(int argc, char **argv)
@@ -141,7 +147,6 @@ void Editor::Init(int argc, char **argv)
     myargv = argv;
 
     editor = eastl::make_unique<Editor>();
-    editor->cGUI->Init("GLNomad Level Editor", 1920, 1080);
 }
 
 Command *Editor::findCommand(const char *name)

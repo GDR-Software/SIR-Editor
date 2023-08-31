@@ -3,22 +3,33 @@
 
 #pragma once
 
-#include <EASTL/unordered_map.h>
-#include <EASTL/string.h>
-
+#include "EditorManager.h"
 #include "Project.h"
 
-class CProjectManager
+class CProjectManager : public CEditorManager<CProject>
 {
 public:
     CProjectManager(void);
     ~CProjectManager();
 
-    bool LoadList(void);
-    void ClearList(void);
+    virtual bool LoadList(void) override;
+    virtual void ClearList(void) override;
+    virtual void Draw(void) override;
+
+    virtual inline bool HasWizard(void) const override
+    { return true; }
+
+    inline const std::filesystem::path& GetProjectDirectory(void) const
+    { return curProject->GetProjectDirectory(); }
+    inline const std::filesystem::path& GetAssetDirectory(void) const
+    { return curProject->GetAssetDirectory(); }
+    inline const eastl::string& GetProjectName(void) const
+    { return curProject->GetName(); }
+    inline const CProject *GetProject(void) const
+    { return curProject; }
 private:
-    eastl::unordered_map<eastl::string, CProject> projectList;
-    int numProjects;
+    void DrawWizard(void);
+    CProject *curProject;
 };
 
 #endif

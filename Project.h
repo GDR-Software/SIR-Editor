@@ -3,26 +3,34 @@
 
 #pragma once
 
-#include "EditorTool.h"
-
-class CProject : public CEditorTool
+class CProject
 {
 public:
     CProject(void);
     ~CProject() = default;
 
-    virtual bool Load(const eastl::string& path) override;
-    virtual bool Load(const json& data) override;
+    bool Save(const eastl::string& path) const;
+    bool Load(const eastl::string& path);
 
-    void setPath(const eastl::string& newpath);
-public:
-    eastl::string path;
+    void New(void);
+
+    inline const eastl::string& GetName(void) const
+    { return name; }
+    inline const std::filesystem::path& GetProjectDirectory(void) const
+    { return projectDirectory; }
+    inline const std::filesystem::path& GetAssetDirectory(void) const
+    { return return assetDirectory; }
+    inline const CMap *GetMap(void) const
+    { return cMap; }
+    inline const CTileset *GetTileset(void) const
+    { return cTileset; }
+private:
     eastl::string name;
+    std::filesystem::path projectDirectory;
+    std::filesystem::path assetDirectory;
 
-    eastl::shared_ptr<Map> mapData;
-    eastl::shared_ptr<Tileset> tileset;
-
-    bool modified;
+    CMap *cMap;
+    CTileset *cTileset;
 };
 
 #endif

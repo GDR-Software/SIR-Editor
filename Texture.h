@@ -5,17 +5,17 @@
 
 #include <stb/stb_image.h>
 
-class Texture
+class CTexture
 {
 public:
-    Texture();
-    ~Texture();
+    CTexture();
+    ~CTexture();
 
     void Load(const eastl::string& filename);
     void Shutdown(void);
 public:
     eastl::string path;
-    eastl::vector<unsigned char> buffer;
+    uint8_t *buffer;
 
     int width;
     int height;

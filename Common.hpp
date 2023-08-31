@@ -23,6 +23,14 @@
 #include <filesystem>
 #include <set>
 #include <nlohmann/json.hpp>
+#include "Zone.h"
+
+#define PAD(base, alignment) (((base)+(alignment)-1) & ~((alignment)-1))
+template<typename type, typename alignment>
+inline type *PADP(type *base, alignment align)
+{
+    return (type *)((void *)PAD((intptr_t)base, align));
+}
 
 using json = nlohmann::json;
 

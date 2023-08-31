@@ -25,6 +25,7 @@ OBJS=\
 	$(O)/Editor.o \
 	$(O)/Project.o \
 	$(O)/Events.o \
+	$(O)/Zone.o \
 
 $(O)/%.o: %.cpp
 	$(COMPILE)

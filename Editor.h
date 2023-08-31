@@ -49,30 +49,41 @@ private:
 class Editor
 {
 public:
-	Editor();
+	Editor(void);
 	~Editor();
 	
     static void Init(int argc, char **argv);
-
-	void DrawSettingsMenu(void);
+	static void ListFiles(eastl::vector<eastl::string>& fileList, const std::filesystem::path& path,
+		const eastl::vector<eastl::string>& exts);
+	static bool SaveJSON(const json& data, const eastl::string& path);
+	static bool LoadJSON(json& data, const eastl::string& path);
+	static inline void SetWindowParms(const ImVec2& windowPos, const ImVec2& windowSize)
+	{
+		ImGui::SetWindowPos(windowPos);
+		ImGui::SetWindowSize(windowSize);
+	}
+	static inline void GetWindowParms(ImVec2& windowPos, ImVec2& windowSize)
+	{
+		ImGui::GetWindowPos(windowPos);
+		ImGui::GetWindowSize(windowSize);
+	}
+	static inline void ResetWindowParms(const ImVec2& windowPos, const ImVec2& windowSize)
+	{
+		ImGui::SetWindowPos(windowPos);
+		ImGui::SetWindowSize(windowSize);
+	}
 
     void DrawFileMenu(void);
     void DrawEditMenu(void);
+	void DrawToolsMenu(void);
 	void DrawPluginsMenu(void);
 	void DrawHelpMenu(void);
-	void DrawProjectMenu(void);
 
 	void LoadPreferences(void);
 	void SavePreferences(void);
 
     void Redo(void);
     void Undo(void);
-    
-    void NewProject(void);
-    void OpenProject(void);
-
-	void InitFiles(void);
-	void SaveFileCache(void);
 
     void DrawWidgets(void);
     void PollCommands(void);
@@ -89,39 +100,15 @@ public:
 	
 	inline static eastl::unique_ptr<Editor>& Get(void)
 	{ return editor; }
-
-	inline const std::filesystem::path& getPath(void) const
+	inline static const std::filesystem::path& GetPWD(void)
 	{ return curPath; }
-	inline const eastl::string& getGamePath(void) const
-	{ return gamepath; }
-
-	inline eastl::shared_ptr<Map>& getMap(void)
-	{ return cMap; }
-	inline const eastl::shared_ptr<Map>& getMap(void) const
-	{ return cMap; }
-	
-	inline eastl::unique_ptr<GUI>& getGUI(void)
-	{ return cGUI; }
-	inline const eastl::unique_ptr<GUI>& getGUI(void) const
-	{ return cGUI; }
-
-	inline eastl::unique_ptr<Project>& getProject(void)
-	{ return cProject; }
 private:
-	eastl::shared_ptr<Map> cMap;
 	eastl::unique_ptr<GUI> cGUI;
-    eastl::vector<eastl::string> recentFiles;
-	eastl::vector<eastl::string> textureFiles;
-	eastl::unique_ptr<Project> cProject;
-
-	std::filesystem::path curPath;
-	eastl::string gamepath;
-
-	bool settings;
 	
 	Command *cmdList;
 	int editorMode;
 	
+	static std::filesystem::path curPath;
 	static eastl::unique_ptr<Editor> editor;
 };
 

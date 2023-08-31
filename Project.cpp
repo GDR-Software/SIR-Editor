@@ -4,87 +4,66 @@
 #include "Editor.h"
 #include "Project.h"
 
-Project::Project()
-    : name{"untitled-project"}, modified{false}
+CProject::CProject(void)
 {
-    setPath(name);
-
-    mapData = eastl::make_shared<Map>();
-    tileset = eastl::make_shared<Tileset>();
+    New();
 }
 
-void Project::Save(void)
+bool CProject::Save(json& data)
+{
+}
+
+bool CProject::Save(const eastl::string& path) const
 {
     json data;
 
     if (!modified)
-        return; // sometimes it recurses
+        return true; // sometimes it recurses
 
     Printf("Saving current project...");
 
-    std::ofstream file(path.c_str(), std::ios::out);
-    if (file.fail()) {
-        Error("Failed to open file '%s' in write mode", path.c_str());
-    }
-
     data["name"] = name;
-    data["mapname"] = mapData->name;
-    data["texture"] = tileset->texture->path;
+    data["mapname"] = cMap->GetName();
+    data["texture"] = cTileset->GetTexture()->GetName();
 
-    file << data;
-
-    file.close();
+    if (!Editor::SaveJSON(data, path)) {
+        Error("Failed to save project!");
+        return false;
+    }
 
     Printf("Save successful");
 
     modified = false;
+    
+    return true;
 }
 
-void Project::New(void)
+void CProject::New(void)
 {
-    tileset.reset();
-    mapData.reset();
+    name = "untitled-project";
+    cTileset = NULL;
+    cMap = NULL;
     modified = true;
 }
 
-void Project::setPath(const eastl::string& newpath)
-{
-    eastl::string p = newpath;
-    if (newpath.find(".nlp") == eastl::string::npos) {
-        p.append(".nlp");
-    }
-    path = eastl::string("Data/") + p;
-}
-
-void Project::Load(const eastl::string& newpath)
+bool CProject::Load(const eastl::string& path)
 {
     json data;
-    FILE *fp;
-
-    if (!FileExists(newpath.c_str())) {
-        Printf("Project::Load: cannot load project '%s' because it does not exist", newpath.c_str());
-        return;
+    
+    if (!Editor::LoadJSON(data, path)) {
+        Error("Failed to load project!");
+        return false;
     }
-
-    fp = SafeOpenRead(newpath.c_str());
-    try {
-        data = json::parse(fp);
-    } catch (const json::exception& e) {
-        Printf("Failed to load json, nlohmann::json::exception =>\n\tid: %i\n\twhat(): %s", e.id, e.what());
-        fclose(fp);
-        return;
-    }
-    fclose(fp);
-
-    path = newpath;
 
     name = data.at("name");
     const eastl::string& mapName = data.at("mapname");
-    const eastl::string& textureFile = data.at("texture");
+    const eastl::string& texture = data.at("texture");
 
-    mapData->Clear();
-    mapData->name = mapName;
-    tileset->LoadTexture(textureFile);
+    cMap->SetName(mapName);
+    cMap->Load(mapName);
+    CTileset->LoadTexture(texture);
 
     modified = true;
+
+    return true;
 }

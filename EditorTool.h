@@ -15,15 +15,24 @@ public:
     virtual bool Save(json& data) const = 0;
     virtual void Clear(void) = 0;
 
+    inline void *operator new(uint64_t size)
+    { return Z_Malloc(size, TAG_STATIC, NULL, "op new"); }
+    inline void *operator new[](uint64_t size)
+    { return Z_Malloc(size, TAG_STATIC, NULL, "op new"); }
+    inline void operator delete(void *ptr)
+    { Z_Free(ptr); }
+    inline void operator delete[](void *ptr)
+    { Z_Free(ptr); }
+
     virtual inline void SetName(const eastl::string& _name)
     { name = _name; }
     virtual inline void SetModified(bool _modified)
     { modified = _modified; }
     virtual inline const eastl::string& GetName(void) const
     { return name; }
-    virtual int bool GetModified(void) const
+    virtual bool GetModified(void) const
     { return modified; }
-private:
+protected:
     eastl::string name;
     bool modified;
 };

@@ -5,23 +5,22 @@
 #define MAX_TILES_X 256
 #define MAX_TILES_Y 256
 
-Tileset::Tileset()
+CTileset::CTileset()
     : width{0}, height{0}, tileWidth{0}, tileHeight{0}
 {
-    inited = false;
-    texture = eastl::make_unique<Texture>();
+    texture = new CTexture;
 }
 
-Tileset::~Tileset()
+CTileset::~CTileset()
+{
+    delete[] tiles;
+}
+
+void CTileset::Clear(void)
 {
 }
 
-void Tileset::Clear(void)
-{
-    texture->Shutdown();
-}
-
-void Tileset::LoadTexture(const eastl::string& path)
+void CTileset::LoadTexture(const eastl::string& path)
 {
     Clear();
     texture->Load(path.c_str());

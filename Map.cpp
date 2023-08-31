@@ -5,36 +5,24 @@
 bool LoadMap(Map *cMap, const char *filename);
 bool SaveMap(const Map *cMap, const char *filename);
 
-Map::Map()
+CMap::CMap(void)
 {
-    memset(tiles.data(), 0, sizeof(Tile) * tiles.size());
-    for (uint32_t y = 0; y < MAX_MAP_HEIGHT; y++) {
-        for (uint32_t x = 0; x < MAX_MAP_WIDTH; x++) {
-            tiles[y * MAX_MAP_WIDTH + x].empty = true;
-            tiles[y * MAX_MAP_WIDTH + x].index = 0;
-        }
-    }
-
-    width = MAX_MAP_WIDTH;
-    height = MAX_MAP_HEIGHT;
-
     name = "untitled-map.map";
 }
 
-Map::~Map()
+CMap::~CMap()
 {
+    delete[] tiles;
 }
 
 /*
-Map::AddCheckpoint: returns false if any of the parms are invalid
+CMap::AddCheckpoint: returns false if any of the parms are invalid
 */
-bool Map::AddCheckpoint(const glm::vec2& pos, const glm::vec2& size)
+bool CMap::AddCheckpoint(const glm::vec2& pos, const glm::vec2& size)
 {
-    if (pos.x >= MAX_MAP_WIDTH || pos.x < 0 || pos.y >= MAX_MAP_HEIGHT) {
+    if (pos.x >= width || pos.x < 0 || pos.y >= height || pos.y < 0) {
         return false;
     }
-
-    Editor::Get()->getProject()->modified = true;
 
     checkpoint_t c;
     c[0] = pos[0];
@@ -48,15 +36,13 @@ bool Map::AddCheckpoint(const glm::vec2& pos, const glm::vec2& size)
 }
 
 /*
-Map::AddSpawn: returns false if any of the parms are invalid
+CMap::AddSpawn: returns false if any of the parms are invalid
 */
-bool Map::AddSpawn(const glm::vec2& pos, uint32_t entity)
+bool CMap::AddSpawn(const glm::vec2& pos, uint32_t entity)
 {
-    if (pos.x >= MAX_MAP_WIDTH || pos.x < 0 || pos.y >= MAX_MAP_HEIGHT) {
+    if (pos.x >= width || pos.x < 0 || pos.y >= height || pos.y < 0) {
         return false;
     }
-
-    Editor::Get()->getProject()->modified = true;
 
     spawn_t s;
     s[0] = pos[0];
@@ -69,49 +55,53 @@ bool Map::AddSpawn(const glm::vec2& pos, uint32_t entity)
 }
 
 /*
-Map::Clear: clears all map data, done every time we're loading a new map
+CMap::Clear: clears all map data, done every time we're loading a new map
 */
-void Map::Clear(void)
+void CMap::Clear(void)
 {
-    tileset.reset();
-
+    delete cTileset;
     spawns.clear();
     checkpoints.clear();
-    memset(tiles.data(), 0, sizeof(Tile) * tiles.size());
-    tileset->Clear();
+    delete[] tiles;
 }
 
-void Map::Load(const eastl::string& filename)
+bool CMap::Load(const eastl::string& path)
 {
     json data;
 
-    if (!FileExists(filename.c_str())) {
-        Printf("Map::Load: file '%s' does not exist", filename.c_str());
-        return;
+    if (!FileExists(path.c_str())) {
+        Printf("Map::Load: file '%s' does not exist", path.c_str());
+        return false;
     }
-    
-    Editor::Get()->getProject()->modified = true;
 
-    Printf("Loading map file '%s'", filename.c_str());
+    Printf("Loading map file '%s'", path.c_str());
 
-    if (!LoadMap(this, filename.c_str())) {
-        Printf("WARNING: failed to load map file '%s'", filename.c_str());
-        return;
+    if (!LoadMap(this, path.c_str())) {
+        Printf("WARNING: failed to load map file '%s'", path.c_str());
+        return false;
     }
+    return true;
 }
 
-void Map::Save(const eastl::string& filename)
+bool CMap::Load(const json& data)
 {
-    FILE *fp;
+}
 
-    if (!Editor::Get()->getProject()->modified) {
-        return; // no need to save if its already been saved
+bool CMap::Save(json& data) const
+{
+}
+
+bool CMap::Save(const eastl::string& path) const
+{
+    if (!modified) {
+        return true; // no need to save if its already been saved
     }
 
-    Printf("Saving map file '%s'", filename.c_str());
+    Printf("Saving map file '%s'", path.c_str());
 
-    if (!SaveMap(this, filename.c_str())) {
-        Printf("WARNING: failed to save map file '%s'", filename.c_str());
-        return;
+    if (!SaveMap(this, path.c_str())) {
+        Printf("WARNING: failed to save map file '%s'", path.c_str());
+        return false;
     }
+    return true;
 }

@@ -3,24 +3,25 @@
 #include "Texture.h"
 #include <glad/glad.h>
 
-Texture::Texture()
+CTexture::CTexture()
     : path{"None"}, width{0}, height{0}, id{0}
 {
 }
 
-Texture::~Texture()
+CTexture::~CTexture()
 {
     Shutdown();
 }
 
-void Texture::Shutdown(void)
+void CTexture::Shutdown(void)
 {
-    buffer.clear();
+    if (buffer)
+        delete[] buffer;
     if (id != 0)
         glDeleteTextures(1, &id);
 }
 
-void Texture::Load(const eastl::string& filename)
+void CTexture::Load(const eastl::string& filename)
 {
     stbi_uc *image;
 
@@ -32,8 +33,10 @@ void Texture::Load(const eastl::string& filename)
         return;
     }
 
-    buffer.clear();
-    buffer.insert(buffer.end(), image, image + (width * height * channels));
+    if (buffer)
+        delete[] buffer;
+    
+    buffer = new uint8_t[width * height * channels];
     free(image);
 
     path = filename;
@@ -49,7 +52,7 @@ void Texture::Load(const eastl::string& filename)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, channels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, buffer.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, channels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, buffer);
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
