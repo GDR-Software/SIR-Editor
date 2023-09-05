@@ -3,14 +3,15 @@
 
 #pragma once
 
+#include "Editor.h"
 #include "EditorTool.h"
 #include "Tileset.h"
 
 #include <glm/vec3.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#define MAX_MAP_WIDTH 256
-#define MAX_MAP_HEIGHT 256
+#define MAX_MAP_WIDTH 1024
+#define MAX_MAP_HEIGHT 1024
 
 struct Tile
 {
@@ -41,7 +42,7 @@ typedef struct
 
 typedef struct
 {
-    uint32_t s[3];
+    uint32_t s[4];
 
     inline operator uint32_t *(void)
     { return s; }
@@ -58,24 +59,46 @@ typedef struct
 class CMap : public CEditorTool
 {
 public:
-    CMap();
-    virtual ~CMap() = default;
+    CMap(void);
+    virtual ~CMap();
 
-    virtual bool Save(json& data) const override;
-    virtual bool Save(const eastl::string& path) const override;
-    virtual bool Load(const json& data) override;
-    virtual bool Load(const eastl::string& path) override;
-    virtual void Clear(void) override;
+    virtual bool Save(json& data) const;
+    virtual bool Save(const string_t& path) const;
+    virtual bool Load(const json& data);
+    virtual bool Load(const string_t& path);
+    virtual void Clear(void);
 
-    bool AddCheckpoint(const glm::vec2& pos, const glm::vec2& size);
-    bool AddSpawn(const glm::vec2& pos, uint32_t entity);
+    void Resize(int dims[2]);
+
+    inline uint32_t GetWidth(void) const
+    { return width; }
+    inline uint32_t GetHeight(void) const
+    { return height; }
+    inline const vector_t<checkpoint_t>& GetCheckpoints(void) const
+    { return checkpoints; }
+    inline const vector_t<spawn_t>& GetSpawns(void) const
+    { return spawns; }
+    inline const vector_t<Tile>& GetTiles(void) const
+    { return tiles; }
+    inline vector_t<checkpoint_t>& GetCheckpoints(void)
+    { return checkpoints; }
+    inline vector_t<spawn_t>& GetSpawns(void)
+    { return spawns; }
+    inline vector_t<Tile>& GetTiles(void)
+    { return tiles; }
+
+    bool AddCheckpoint(const checkpoint_t& c);
+    inline bool AddSpawn(const spawn_t& s)
+    { return AddSpawn({s[0], s[1]}, s[2], s[3]); }
+    bool AddSpawn(const glm::vec2& pos, uint32_t entityType, uint32_t entityId);
 private:
-    Tile *tiles;
+    bool SaveBIN(const string_t& path) const;
 
-    CTileset *cTileset;
+    vector_t<Tile> tiles;
+    vector_t<checkpoint_t> checkpoints;
+    vector_t<spawn_t> spawns;
 
-    eastl::vector<checkpoint_t> checkpoints;
-    eastl::vector<spawn_t> spawns;
+    object_ptr_t<CTileset> cTileset;
 
     uint32_t width;
     uint32_t height;

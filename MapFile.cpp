@@ -12,29 +12,50 @@ typedef struct
 	uint32_t version;
 } mapheader_t;
 
-static void LoadCheckpoints(Map *cMap, FILE *fp)
+static void LoadCheckpoints(CMap *cMap, FILE *fp)
 {
 	uint32_t numCheckpoints;
 	checkpoint_t check;
-	
+
+    cMap->GetCheckpoints().clear();
     SafeRead(&numCheckpoints, sizeof(uint32_t), fp);
+    cMap->GetCheckpoints().reserve(numCheckpoints + 64);
 	
 	for (uint32_t i = 0; i < numCheckpoints; i++) {
 		SafeRead(check.data(), sizeof(checkpoint_t), fp);
-		
-		cMap->AddCheckpoint({check[0], check[1]}, {check[2], check[3]});
+		cMap->AddCheckpoint(check);
 	}
 }
 
-static void LoadSpawns(Map *cMap, FILE *fp)
+static void LoadSpawns(CMap *cMap, FILE *fp)
 {
     uint32_t numSpawns;
     spawn_t spawn;
 
+    cMap->GetSpawns().clear();
     SafeRead(&numSpawns, sizeof(uint32_t), fp);
+    cMap->GetSpawns().reserve(numSpawns + 64);
+
+    for (uint32_t i = 0; i < numSpawns; i++) {
+        SafeRead(spawn.data(), sizeof(spawn_t), fp);
+        cMap->AddSpawn(spawn);
+    }
 }
 
-bool LoadMap(Map *cMap, const char *filename)
+static void LoadTiles(CMap *cMap, FILE *fp)
+{
+    int dims[2];
+
+    SafeRead(dims, sizeof(dims), fp);
+
+    if (cMap->GetWidth() != dims[0] || cMap->GetHeight() != dims[1]) {
+        cMap->Resize(dims);
+    }
+
+    SafeRead(cMap->GetTiles().data(), sizeof(Tile) * dims[0] * dims[1], fp);
+}
+
+bool LoadMap(CMap *cMap, const char *filename)
 {
 	FILE *fp;
 	mapheader_t header;
@@ -64,44 +85,51 @@ bool LoadMap(Map *cMap, const char *filename)
 	
 	LoadCheckpoints(cMap, fp);
 	LoadSpawns(cMap, fp);
+    LoadTiles(cMap, fp);
+
 	fclose(fp);
+
+    cMap->SetModified(true);
 	
 	return true;
 }
 
-static void SaveCheckpoints(const Map *cMap, FILE *fp)
+static void SaveCheckpoints(const CMap *cMap, FILE *fp)
 {
     uint32_t numCheckpoints;
 
-    numCheckpoints = cMap->getCheckpoints().size();
+    numCheckpoints = cMap->GetCheckpoints().size();
     SafeWrite(&numCheckpoints, sizeof(uint32_t), fp);
 
     for (uint32_t i = 0; i < numCheckpoints; i++) {
-        SafeWrite(cMap->getCheckpoints()[i].data(), sizeof(checkpoint_t), fp);
+        SafeWrite(cMap->GetCheckpoints()[i], sizeof(checkpoint_t), fp);
     }
 }
 
-static void SaveTiles(const Map *cMap, FILE *fp)
+static void SaveTiles(const CMap *cMap, FILE *fp)
 {
-    uint32_t width, height;
-    const Tile *tile;
+    int dims[2];
 
-    SafeWrite(cMap->getTiles().data(), sizeof(Tile) * MAX_MAP_WIDTH * MAX_MAP_HEIGHT, fp);
+    dims[0] = cMap->GetWidth();
+    dims[1] = cMap->GetHeight();
+
+    SafeWrite(dims, sizeof(dims), fp);
+    SafeWrite(cMap->GetTiles().data(), sizeof(Tile) * dims[0] * dims[1], fp);
 }
 
-static void SaveSpawns(const Map *cMap, FILE *fp)
+static void SaveSpawns(const CMap *cMap, FILE *fp)
 {
     uint32_t numSpawns;
 
-    numSpawns = cMap->getSpawns().size();
+    numSpawns = cMap->GetSpawns().size();
     SafeWrite(&numSpawns, sizeof(uint32_t), fp);
 
     for (uint32_t i = 0; i < numSpawns; i++) {
-        SafeWrite(cMap->getSpawns()[i].data(), sizeof(spawn_t), fp);
+        SafeWrite(cMap->GetSpawns()[i], sizeof(spawn_t), fp);
     }
 }
 
-bool SaveMap(const Map *cMap, const char *filename)
+bool SaveMap(const CMap *cMap, const char *filename)
 {
     FILE *fp;
     mapheader_t header;

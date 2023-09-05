@@ -1,0 +1,28 @@
+#ifndef __TILESET_MANAGER__
+#define __TILESET_MANAGER__
+
+#pragma once
+
+#include "EditorManager.h"
+#include "Tileset.h"
+
+class CTilesetManager : public CEditorManager
+{
+public:
+    CTilesetManager(void);
+    virtual ~CTilesetManager();
+
+    virtual inline bool HasWizard(void) const override
+    { return true; }
+    virtual inline bool HasOpenRecent(void) const override
+    { return true; }
+
+    virtual void DrawWizard(const string_t& menuTitle = "Tileset Wizard") override;
+    virtual void DrawWizard(void) override
+    { DrawWizard("Tileset Wizard"); }
+
+    IMPL_EDITOR_MANAGER(CTilesetManager, CTileset)
+    IMPL_SINGLETON(CTilesetManager, CTileset)
+};
+
+#endif

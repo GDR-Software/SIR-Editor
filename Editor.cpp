@@ -1,28 +1,69 @@
 #include "Common.hpp"
+#include "ProjectManager.h"
+#include "Project.h"
 #include "Editor.h"
 #include <glad/glad.h>
 
 #define DEFAULT_GAMEPATH "Data"
 
-eastl::unique_ptr<Editor> Editor::editor;
-std::filesystem::path Editor::curPath;
+object_ptr_t<Editor> Editor::editor;
+path_t Editor::curPath;
+static Command *cmdList;
+
+bool Editor::IsAllocated(void)
+{
+    if (!editor)
+        return false;
+    if (!editor->cGUI)
+        return false;
+    
+    return true;
+}
 
 Editor::Editor(void)
 {
     int parm;
+    const char *load;
 
     parm = GetParm("-loglevel");
-
-    InitFiles();
-
-    if (parm != -1) {
+    if (parm != -1)
         spdlog::set_level(spdlog::level::trace);
-    }
-    else {
+    else
         spdlog::set_level(spdlog::level::info);
-    }
-    cGUI = eastl::make_unique<GUI>();
+
+    parm = GetParm("-load");
+    if (parm != -1)
+        load = myargv[parm];
+    else
+        load = NULL;
+    
+    useInternalMaps = GetParm("-imap") != -1;
+    useInternalTilesets = GetParm("-itileset") != -1;
+
+    cGUI = Allocate<GUI>();
+    curPath = std::filesystem::current_path();
+    ReloadFiles();
+    
     cGUI->Init("GLNomad Level Editor", 1920, 1080);
+    
+    cProjectManager = AddManager<CProjectManager>("ProjectManager");
+    cMapManager = AddManager<CMapManager>("MapManager");
+    cTilesetManager = AddManager<CTilesetManager>("TilesetManager");
+    cTextureManager = AddManager<CTextureManager>("TextureManager");
+
+    cTileset = Allocate<CTileset>();
+    cMap = Allocate<CMap>();
+    cProject = Allocate<CProject>();
+
+    cProjectManager->LoadList();
+    cMapManager->LoadList();
+    cTilesetManager->LoadList();
+    cTextureManager->LoadList();
+
+//    if (load)
+//        cProjectManager->SetCurrent(load);
+
+    LoadPreferences();
 }
 
 Editor::~Editor()
@@ -30,21 +71,29 @@ Editor::~Editor()
 	Command *cmd, *next;
 	for (cmd = cmdList; cmd; cmd = next) {
 		next = cmd->getNext();
-		delete cmd;
+        Deallocate(cmd);
 	}
 }
 
-bool Editor::SaveJSON(const json& data, const eastl::string& path)
+void Editor::CheckExtension(path_t& path, const char *ext)
 {
-    char *rpath;
-    constexpr const char *dir = "Data/";
+    const char *_ext;
 
-    rpath = (char *)alloca(path.size() + strlen(dir) + 1);
-    sprintf(rpath, "%s%s", dir, path.c_str());
+    _ext = COM_GetExtension(path.c_str());
+    if (!_ext || (_ext && N_stricmp(_ext, ext) != 0)) {
+        path.append(ext);
+    }
+}
+
+bool Editor::SaveJSON(const json& data, const path_t& path)
+{
+    const char *rpath;
+
+    rpath = path.c_str();
 
     std::ofstream file(rpath, std::ios::out);
     if (file.fail()) {
-        Printf("Editor::SaveJSON: failed to save json to '%s', std::ofstream failed", path);
+        Printf("Editor::SaveJSON: failed to save json to '%s', std::ofstream failed", rpath);
         return false;
     }
     file << data;
@@ -53,17 +102,23 @@ bool Editor::SaveJSON(const json& data, const eastl::string& path)
     return true;
 }
 
-bool Editor::LoadJSON(json& data, const eastl::string& path)
+void Editor::InitFiles(void)
 {
-    char *rpath;
-    constexpr const char *dir = "Data/";
+    ReloadFiles();
+}
+
+bool Editor::LoadJSON(json& data, const path_t& path)
+{
+    const char *rpath;
     FILE *fp;
 
-    rpath = (char *)alloca(path.size() + strlen(dir) + 1);
-    sprintf(rpath, "%s%s", dir, path.c_str());
+    rpath = strdupa(path.c_str());
+    if (IsAbsolutePath(path.c_str())) {
+        rpath = BuildOSPath(curPath, "Data/", path.c_str());
+    }
 
     if (!FileExists(rpath)) {
-        Printf("Editor::LoadJSON: bad json path '%s', file does not exist", path.c_str());
+        Printf("Editor::LoadJSON: bad json path '%s', file does not exist", rpath);
         return false;
     }
     
@@ -82,20 +137,14 @@ bool Editor::LoadJSON(json& data, const eastl::string& path)
 
 void Editor::LoadPreferences(void)
 {
-    FILE *fp;
     json data;
 
     Printf("Loading prefences file...");
 
-    fp = SafeOpenRead("Data/preferences.json");
-    try {
-        data = json::parse(fp);
-    } catch (const json::exception& e) {
-        Printf("Failed to load json, nlohmann::json::exception =>\n\tid: %i\n\twhat(): %s", e.id, e.what());
-        fclose(fp);
+    if (!LoadJSON(data, "preferences.json")) {
+        Printf("WARNING: failed to load preferences.json");
         return;
     }
-    fclose(fp);
 
     cGUI->getCamera().moveSpeed = data["camera"]["movespeed"];
     cGUI->getCamera().rotationSpeed = data["camera"]["rotationspeed"];
@@ -120,23 +169,23 @@ void Editor::SavePreferences(void)
     file.close();
 }
 
-void Editor::ListFiles(eastl::vector<eastl::string>& fileList, const std::filesystem::path& path, const eastl::vector<eastl::string>& exts)
+void Editor::ListFiles(vector_t<path_t>& fileList, const path_t& path, const vector_t<const char *>& exts)
 {
     auto isExt = [&](const char *str) {
-        for (const auto& it : exts) {
-            if (strstr(str, it.c_str()) != NULL) {
+        for (const auto *it : exts) {
+            if (N_stristr(str, it)) {
                 return true;
             }
         }
         return false;
     };
 
-    for (const auto& i : std::filesystem::directory_iterator{path}) {
-        if (i.is_directory()) {
-            ListFiles(fileList, i.path(), exts);
+    for (const FileEntry& it : editor->fileCache) {
+        if (it.isDirectory) {
+            ListFiles(fileList, it.path, exts);
         }
-        else if (isExt(i.path().c_str()) && !i.is_directory()) {
-            fileList.emplace_back(i.path().c_str());
+        else if (isExt(it.path.c_str()) && !it.isDirectory) {
+            fileList.emplace_back(it.path);
         }
     }
 }
@@ -146,7 +195,18 @@ void Editor::Init(int argc, char **argv)
     myargc = argc;
     myargv = argv;
 
-    editor = eastl::make_unique<Editor>();
+#ifdef USE_ZONE
+    Z_Init();
+    atexit(Z_Shutdown);
+
+    editor = (Editor *)Z_Malloc(sizeof(*editor), TAG_STATIC, &editor, "editor");
+#else
+    Mem_Init();
+    atexit(Mem_Shutdown);
+
+    editor = (Editor *)Mem_Alloc(sizeof(*editor));
+#endif
+    ::new (editor) Editor();
 }
 
 Command *Editor::findCommand(const char *name)
@@ -168,7 +228,7 @@ void Editor::registerCommand(const char *name, void (*func)(void))
 		Printf("Command '%s' already registered", name);
 	}
 	
-	cmd = new Command(name, func);
+	cmd = Allocate<Command>(name, func);
 	cmd->setNext(cmdList);
 	cmdList = cmd;
 }
@@ -188,6 +248,7 @@ void Editor::PollCommands(void)
 		cmd = findCommand(inputBuf);
 		if (!cmd) {
 			Printf("No such command '%s'", inputBuf);
+            return;
 		}
 		cmd->Run();
 	}
@@ -213,23 +274,9 @@ static uint32_t SpawnStringToEntity(const char *s)
     Printf("ERROR: Bad entity string: %s", s);
 }
 
-void Editor::NewProject(void)
+static void DirectoryIterate(const path_t& curPath)
 {
-    // set the default name
-    cMap->name = "untitled-map.map";
-
-    // clear out the old map
-    cMap->Clear();
-
-    cProject->name = "untitled-project";
-    cProject->setPath(cProject->name);
-
-    cProject->modified = true;
-}
-
-static void DirectoryIterate(const std::filesystem::path& curPath)
-{
-    for (const auto& entry : std::filesystem::directory_iterator(curPath)) {
+    for (const auto& entry : directory_iterator_t{curPath}) {
         if (entry.is_directory()) {
             if (ImGui::BeginMenu(entry.path().c_str())) {
                 DirectoryIterate(entry.path());
@@ -244,65 +291,130 @@ static void DirectoryIterate(const std::filesystem::path& curPath)
     }
 }
 
-void Editor::OpenProject(void)
+void Editor::RecursiveDirectoryIterator(const path_t& path, vector_t<FileEntry>& dirList, uint32_t& depth)
 {
-    cProject->modified = true;
-    DirectoryIterate(curPath);
+    for (const auto& it : directory_iterator_t{path}) {
+        dirList.emplace_back();
+        FileEntry& entry = dirList.back();
+        entry.path = it.path();
+
+        if (it.is_directory()) {
+            depth++;
+            printf("|");
+            for (uint32_t i= 0; i < depth; i++) {
+                printf("-");
+            }
+            printf(" %s/\n", GetAbsolutePath(it.path()));
+
+            entry.isDirectory = true;
+            RecursiveDirectoryIterator(it.path(), entry.DirList, depth);
+        }
+        else if (!it.is_directory()) {
+            printf("|");
+            for (uint32_t i= 0; i < depth; i++) {
+                printf("-");
+            }
+            printf(" %s\n", GetAbsolutePath(it.path()));
+
+            entry.isDirectory = false;
+        }
+    }
+}
+
+void Editor::DisplayFileCache(const vector_t<FileEntry>& cache, uint32_t& depth)
+{
+    for (const auto& it : cache) {
+        if (it.isDirectory) {
+            depth++;
+            printf("|");
+            for (uint32_t i= 0; i < depth; i++) {
+                printf("-");
+            }
+            printf(" %s/\n", GetAbsolutePath(it.path));
+            DisplayFileCache(cache, depth);
+        }
+        else if (!it.isDirectory) {
+            printf("|");
+            for (uint32_t i= 0; i < depth; i++) {
+                printf("-");
+            }
+            printf(" %s\n", GetAbsolutePath(it.path));
+        }
+    }
+}
+
+void Editor::ReloadFiles(void)
+{
+    uint32_t depth;
+
+    Printf("Reloading file cache...");
+
+    depth = 0;
+    fileCache.clear();
+    string_t path = string_t(curPath.c_str()) + "/Data/";
+    RecursiveDirectoryIterator(path_t(path.c_str()), fileCache, depth);
+
+#ifndef NDEBUG
+    depth = 0;
+    DisplayFileCache(fileCache, depth);
+#endif
 }
 
 static bool exiting = false;
 void Editor::DrawFileMenu(void)
 {
     if (ImGui::MenuItem("New Project", "Ctrl+N")) {
-        NewProject();
+        cProjectManager->NewProject();
     }
     if (ImGui::BeginMenu("Open Project")) {
         setModeBits(EDITOR_WIDGET);
-        OpenProject();
         ImGui::EndMenu();
         clearModeBits(EDITOR_WIDGET);
     }
     if (ImGui::BeginMenu("Open Recent")) {
         setModeBits(EDITOR_WIDGET);
-        if (!recentFiles.size()) {
-            ImGui::MenuItem("No Recent Files");
-        }
-        else {
-            for (const auto& i : recentFiles) {
-                if (ImGui::MenuItem(i.c_str())) {
-                    cProject->name = i;
-                    cProject->Load(i);
-                }
+        for (const auto& it : managerList) {
+            if (it.second->HasOpenRecent()) {
+                it.second->DrawRecent();
             }
         }
         ImGui::EndMenu();
         clearModeBits(EDITOR_WIDGET);
     }
     if (ImGui::MenuItem("Save Project", "Ctrl+S")) {
-        cProject->Save();
-        eastl::string saveString = eastl::string("Saved Project ") + cProject->name;
-        if (ImGui::BeginPopup(saveString.c_str())) {
+        cProjectManager->SaveCurrent();
+
+        const uint64_t size = cProjectManager->GetCurrentName().size() + strlen("Saved Project ") + 1;
+        char *saveString = (char *)alloca(size);
+        memset(saveString, 0, size);
+        snprintf(saveString, size, "Saved Project %s", cProjectManager->GetCurrentName().c_str());
+        Printf("%s", saveString);
+
+        if (ImGui::BeginPopup(saveString)) {
             ImGui::EndPopup();
         }
     }
     if (ImGui::MenuItem("Exit", "Alt+F4")) {
         setModeBits(EDITOR_WIDGET);
-        exiting = cProject->modified;
+        exiting = cProjectManager->GetCurrentModified();
         if (exiting) {
             ImGui::Begin("Save Project?");
             if (ImGui::Button("Yes")) {
-                cProject->Save();
+                cProjectManager->SaveCurrent();
                 Exit();
-            }
-            else {
-                exiting = false;
             }
             ImGui::End();
         }
-        else {
-            Exit();
-        }
         setModeBits(EDITOR_WIDGET);
+    }
+}
+
+void Editor::DrawWizardMenu(void)
+{
+    for (const auto& it : managerList) {
+        if (it.second->HasWizard()) {
+            it.second->DrawWizard("Wizard");
+        }
     }
 }
 
@@ -316,92 +428,6 @@ void Editor::Undo(void)
 
 void Editor::DrawEditMenu(void)
 {
-    char name[1024];
-    memset(name, 0, sizeof(name));
-
-    if (ImGui::BeginMenu("Map")) {
-        if (ImGui::InputInt("Set Width", &cMap->width)) {
-            cProject->modified = true;
-        }
-        if (ImGui::InputInt("Set Height", &cMap->height)) {
-            cProject->modified = true;
-        }
-        ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("Project")) {
-        setModeBits(EDITOR_WIDGET);
-        if (ImGui::BeginMenu("Tileset")) {
-            if (ImGui::BeginMenu("Texture File")) {
-                for (const auto& it : textureFiles) {
-                    if (ImGui::MenuItem(it.c_str())) {
-                        cProject->tileset->LoadTexture(it);
-                        cProject->modified = true;
-                    }
-                }
-                ImGui::EndMenu();
-            }
-            if (ImGui::InputInt("Tile Width", &cProject->tileset->tileWidth)) {
-                cProject->modified = true;
-            }
-            if (ImGui::InputInt("Tile Height", &cProject->tileset->tileHeight)) {
-                cProject->modified = true;
-            }
-            ImGui::EndMenu();
-        }
-        if (ImGui::InputText("Project Name", name, sizeof(name))) {
-            cProject->name = name;
-            cProject->setPath(name);
-            cProject->modified = true;
-            Printf("New project name: %s", cProject->name.c_str());
-            Printf("New project path: %s", cProject->path.c_str());
-        }
-        ImGui::EndMenu();
-        clearModeBits(EDITOR_WIDGET);
-    }
-    if (ImGui::BeginMenu("Settings")) {
-        if (ImGui::SliderFloat("Zoom Speed", &cGUI->getCamera().zoomSpeed, 1.0f, 15.0f)) {
-            SavePreferences();
-        }
-        if (ImGui::SliderFloat("Rotation Speed", &cGUI->getCamera().rotationSpeed, 1.0f, 15.0f)) {
-            SavePreferences();
-        }
-        if (ImGui::SliderFloat("Move Speed", &cGUI->getCamera().moveSpeed, 1.5f, 20.0f)) {
-            SavePreferences();
-        }
-        ImGui::EndMenu();
-    }
-}
-
-void Editor::DrawProjectMenu(void)
-{
-    char name[1024];
-    memset(name, 0, sizeof(name));
-
-    if (ImGui::BeginMenu("Change")) {
-        setModeBits(EDITOR_WIDGET);
-        if (ImGui::BeginMenu("Texture File")) {
-            for (const auto& it : textureFiles) {
-                if (ImGui::MenuItem(it.c_str())) {
-                    cProject->tileset->LoadTexture(it);
-                }
-            }
-            ImGui::EndMenu();
-        }
-        if (ImGui::InputText("Project Name", name, sizeof(name))) {
-            cProject->name = name;
-            cProject->setPath(name);
-            cProject->modified = true;
-        }
-        ImGui::EndMenu();
-        clearModeBits(EDITOR_WIDGET);
-    }
-    if (ImGui::BeginMenu("Info")) {
-        ImGui::Text("Name: %s", cProject->name.c_str());
-        ImGui::Text("Path: %s", cProject->path.c_str());
-        ImGui::Text("Map File: %s", cProject->mapData->name.c_str());
-        ImGui::Text("Texture File: %s", cProject->tileset->texture->path.c_str());
-        ImGui::EndMenu();
-    }
 }
 
 void Editor::DrawWidgets(void)
@@ -415,8 +441,8 @@ void Editor::DrawWidgets(void)
             DrawEditMenu();
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("Project")) {
-            DrawProjectMenu();
+        if (ImGui::BeginMenu("Wizard")) {
+            DrawWizardMenu();
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -432,7 +458,6 @@ void Editor::run(void)
 		PollCommands();
         DrawWidgets();
 		
-		cGUI->DrawMap(cMap);
 		cGUI->EndFrame();
 	}
 }

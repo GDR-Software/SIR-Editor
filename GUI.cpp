@@ -13,7 +13,7 @@
 
 #define NUM_VERTICES (MAX_MAP_HEIGHT*MAX_MAP_WIDTH*4)
 
-GUI::GUI()
+GUI::GUI(void)
 {
     cameraPos = glm::vec3(0.0f);
     zoomLevel = 15.0f;
@@ -24,7 +24,11 @@ GUI::GUI()
 
 GUI::~GUI()
 {
-    free(vertices);
+#ifdef USE_ZONE
+    Z_Free(vertices);
+#else
+    Mem_Free(vertices);
+#endif
 
     ImGui_ImplSDL2_Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
@@ -178,9 +182,9 @@ void GUI::PollEvents(Editor *editor)
         editor->clearModeBits(EDITOR_CTRL);
     
     if (Key_IsDown(KEY_N) && editor->getModeBits() & EDITOR_CTRL)
-        editor->NewProject();
+        Editor::GetProjManager()->GetCurrent()->New();
     if (Key_IsDown(KEY_S) && editor->getModeBits() & EDITOR_CTRL)
-        editor->getProject()->Save();
+        Editor::GetProjManager()->GetCurrent()->Save();
 }
 
 void GUI::CheckProgram(void)
@@ -389,26 +393,11 @@ void GUI::EndFrame(void)
     SDL_GL_SwapWindow(window);
 }
 
-void GUI::Print(const char *fmt, ...)
-{
-    char buf[4096];
-    int len;
-    va_list argptr;
-
-    va_start(argptr, fmt);
-    len = N_vsnprintf(buf, sizeof(buf), fmt, argptr);
-    va_end(argptr);
-
-    conbuffer.insert(conbuffer.end(), buf, buf + len);
-    conbuffer.emplace_back('\n');
-}
-
-void GUI::DrawMap(const eastl::shared_ptr<Map>& cMap)
+void GUI::DrawMap(const CMap *cMap)
 {
     bool empty;
     uint32_t numVertices, index;
     Vertex verts[4];
-    const eastl::vector<Tile>& tiles = cMap->tileset->tiles;
     constexpr glm::vec2 emptyCoords[4] = {
         {0.0f, 0.0f},
         {0.0f, 0.0f},
@@ -424,38 +413,16 @@ void GUI::DrawMap(const eastl::shared_ptr<Map>& cMap)
     glUseProgram(shaderId);
     glUniformMatrix4fv(viewProjection, 1, GL_FALSE, glm::value_ptr(camera.getVPM()));
 
-    glBindTexture(GL_TEXTURE_2D, cMap->tileset->texture->id);
     glBindVertexArray(vaoId);
     glBindBuffer(GL_ARRAY_BUFFER, vboId);
     for (uint32_t y = 0; y < MAX_MAP_HEIGHT; y++) {
         for (uint32_t x = 0; x < MAX_MAP_WIDTH; x++) {
             ConvertCoords(verts, { x - (MAX_MAP_WIDTH * 0.5f), MAX_MAP_HEIGHT - y });
-
-            const bool selected = y == selectedTileY && x == selectedTileX;
-            if (cMap->tileset->inited)
-                empty = tiles[y * MAX_MAP_WIDTH + x].empty;
-
-            index = cMap->tiles[y * MAX_MAP_WIDTH + x].index;
-            glUniform1i(selectedTile, (int)cMap->tiles[y * MAX_MAP_WIDTH + x].empty);
-            for (uint32_t i = 0; i < 4; i++) {
-                verts[i].empty = empty ? 1.0f : 0.0f;
-                if (!cMap->tileset->inited) {
-                    memset(&verts[i].texcoords[0], 0, sizeof(glm::vec2));
-                }
-                else {
-                    verts[i].texcoords = cMap->tileset->tiles[index].texcoords[i];
-                }
-                numVertices++;
-//                glVertex2fv(&vertices[i].pos[0]);
-            }
-            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Vertex) * 4, verts);
-            glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
         }
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_2D, 0);
     glUseProgram(0);
 }
 
@@ -488,7 +455,11 @@ void GUI::Init(const char *windowName, int width, int height)
         Error("Failed to init GLAD");
     }
     
-    vertices = (Vertex *)SafeMalloc(sizeof(Vertex) * NUM_VERTICES);
+#ifdef USE_ZONE
+    vertices = (Vertex *)Z_Malloc(sizeof(*vertices) * NUM_VERTICES, TAG_RENDERER, &vertices, "GLvertices");
+#else
+    vertices = (Vertex *)Mem_Alloc(sizeof(*vertices) * NUM_VERTICES);
+#endif
     InitGLObjects();
     ResetMouse();
 

@@ -25,7 +25,12 @@ OBJS=\
 	$(O)/Editor.o \
 	$(O)/Project.o \
 	$(O)/Events.o \
-	$(O)/Zone.o \
+	$(O)/ProjectManager.o \
+	$(O)/MapManager.o \
+	$(O)/TilesetManager.o \
+	$(O)/TextureManager.o \
+	$(O)/EditorTool.o \
+	$(O)/EditorManager.o \
 
 $(O)/%.o: %.cpp
 	$(COMPILE)
@@ -33,7 +38,7 @@ $(O)/%.o: Dependencies/src/%.cpp
 	$(COMPILE)
 
 $(EXE): $(OBJS) $(DEPS)
-	$(CC) $(CFLAGS) $(OBJS) $(DEPS) -o $(EXE) -lGL -lSDL2 /usr/local/lib/libspdlog.a
+	$(CC) $(CFLAGS) $(OBJS) $(DEPS) -o $(EXE) -lGL -lSDL2 /usr/local/lib/libspdlog.a /usr/local/lib/libfoonathan_memory-0.7.3.a libEASTL.a
 
 clean:
 	rm $(O)/*

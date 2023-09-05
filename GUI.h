@@ -6,12 +6,7 @@
 #include <SDL2/SDL.h>
 #include "Map.h"
 #include "Editor.h"
-#include "imgui.h"
-#include "imgui_impl_sdl2.h"
-#include "imgui_impl_opengl3.h"
 #include <glad/glad.h>
-
-#define ERROR 0
 
 class Editor;
 
@@ -60,15 +55,29 @@ public:
     float moveSpeed;
 };
 
+inline eastl::vector<char> conbuffer;
+
 class GUI
 {
 public:
-    GUI();
+    GUI(void);
     ~GUI();
 
     inline void ResetMouse(void)
+    { SDL_WarpMouseInWindow(window, (1920 / 2), (1080 / 2)); }
+
+    static void Print(const char *fmt, ...)
     {
-        SDL_WarpMouseInWindow(window, (1920 / 2), (1080 / 2));
+        int len;
+        char msg[4096];
+        va_list argptr;
+
+        va_start(argptr, fmt);
+        len = vsnprintf(msg, sizeof(msg), fmt, argptr);
+        va_end(argptr);
+
+        conbuffer.insert(conbuffer.end(), msg, msg + len);
+        conbuffer.emplace_back('\n');
     }
 
     void Init(const char *windowName, int width, int height);
@@ -78,8 +87,7 @@ public:
     void Popup(const char *title, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
     void EndFrame(void);
     void ConvertCoords(Vertex *vertices, const glm::vec2& pos);
-    void Print(const char *fmt, ...) __attribute__((format(printf, 2, 3)));
-    void DrawMap(const eastl::shared_ptr<Map>& cMap);
+    void DrawMap(const CMap *cMap);
 
     void CheckShader(GLuint id, GLenum type);
     void CheckProgram(void);
@@ -104,7 +112,7 @@ public:
     { return camera; }
     inline SDL_Event *getEvent(void)
     { return &event; }
-public:
+private:
     int selectedTileY;
     int selectedTileX;
 
@@ -115,7 +123,6 @@ public:
     int windowWidth;
     int windowHeight;
     Camera camera;
-    eastl::vector<char> conbuffer;
 
     glm::mat4 proj, vpm, viewMatrix;
     glm::vec3 cameraPos;
@@ -130,7 +137,6 @@ public:
     Vertex *vertices;
     uint32_t *indices;
 
-    eastl::shared_ptr<Map> cMap;
     bool consoleActive;
 };
 

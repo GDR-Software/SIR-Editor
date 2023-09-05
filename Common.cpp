@@ -1,9 +1,34 @@
 #include "Common.hpp"
 #include "GUI.h"
 #include "Editor.h"
+#ifdef USE_ZONE
+#include "Zone.cpp"
+#else
+#include "Heap.cpp"
+#endif
+
+#ifdef PATH_MAX
+#define MAX_OSPATH PATH_MAX
+#else
+#define MAX_OSPATH 256
+#endif
+#ifdef _WIN32
+#define PATH_SEP '\\'
+#else
+#define PATH_SEP '/'
+#endif
 
 int myargc;
 char **myargv;
+
+void* operator new[](size_t size, size_t alignment, size_t alignmentOffset, const char* pName, int flags, unsigned debugFlags, const char* file, int line)
+{
+#ifdef USE_ZONE
+	return Z_Malloc(size, TAG_STATIC, NULL, "op new");
+#else
+	return Mem_Alloc(size);
+#endif
+}
 
 void Exit(void)
 {
@@ -20,8 +45,9 @@ void Error(const char *fmt, ...)
     vsnprintf(buffer, sizeof(buffer), fmt, argptr);
     va_end(argptr);
 
-    Editor::Get()->getGUI()->Print("ERROR: %s", buffer);
-    Editor::Get()->getGUI()->Print("Exiting app (code : -1)");
+	GUI::Print("ERROR: %s", buffer);
+	GUI::Print("Exiting app (code : -1)");
+	
     spdlog::critical("ERROR: {}", buffer);
     spdlog::critical("Exiting app (code : -1)");
 
@@ -38,7 +64,12 @@ void Printf(const char *fmt, ...)
     va_end(argptr);
 
     spdlog::info("{}", buffer);
-    Editor::Get()->getGUI()->Print("%s", buffer);
+	GUI::Print("%s", buffer);
+}
+
+bool IsAbsolutePath(const string_t& path)
+{
+	return strrchr(path.c_str(), PATH_SEP) == NULL;
 }
 
 int GetParm(const char *parm)
@@ -50,6 +81,36 @@ int GetParm(const char *parm)
             return i;
     }
     return -1;
+}
+
+const char *GetFilename(const char *path)
+{
+	const char *dir;
+
+	dir = strrchr(path, PATH_SEP);
+	return dir ? dir + 1 : path;
+}
+
+void COM_StripExtension(const char *in, char *out, uint64_t destsize)
+{
+	const char *dot = (char *)strrchr(in, '.'), *slash;
+
+	if (dot && ((slash = (char *)strrchr(in, '/')) == NULL || slash < dot))
+		destsize = (destsize < dot-in+1 ? destsize : dot-in+1);
+
+	if ( in == out && destsize > 1 )
+		out[destsize-1] = '\0';
+	else
+		N_strncpy(out, in, destsize);
+}
+
+const char *COM_GetExtension( const char *name )
+{
+	const char *dot = strrchr(name, '.'), *slash;
+	if (dot && ((slash = strrchr(name, '/')) == NULL || slash < dot))
+		return dot + 1;
+	else
+		return "";
 }
 
 #ifdef _WIN32
@@ -483,18 +544,7 @@ int N_stricmp( const char *s1, const char *s2 )
 	return 0;
 }
 
-#ifdef PATH_MAX
-#define MAX_OSPATH PATH_MAX
-#else
-#define MAX_OSPATH 256
-#endif
-#ifdef _WIN32
-#define PATH_SEP '\\'
-#else
-#define PATH_SEP '/'
-#endif
-
-char* BuildOSPath(const std::filesystem::path& curPath, const eastl::string& gamepath, const char *npath)
+char* BuildOSPath(const path_t& curPath, const string_t& gamepath, const char *npath)
 {
 	static char ospath[MAX_OSPATH*2+1];
 	char temp[MAX_OSPATH];
@@ -514,7 +564,7 @@ void *SafeMalloc(size_t size)
 
 	Printf("Allocating %lu bytes with malloc()", size);
 
-	p = malloc(size);
+	p = Mem_Alloc(size);
 	if (!p) {
 		Error("malloc() failure on %lu bytes, strerror: %s", size, strerror(errno));
 	}

@@ -201,12 +201,12 @@ static void KeyDownEvent(int key, unsigned int time)
 
 	// console key is hardcoded, so the user can never unbind it
 	if (key == KEY_CONSOLE || (keys[KEY_LSHIFT].down && key == KEY_ESCAPE)) {
-		Editor::Get()->getGUI()->setConsoleActive(true);
+		Editor::GetGUI()->setConsoleActive(true);
 		return;
 	}
 
 	// only let the console process the event if its open
-	if (Editor::Get()->getGUI()->isConsoleActive()) {
+	if (Editor::GetGUI()->isConsoleActive()) {
 		keys[key].down = false;
 		keys[key].repeats--;
 		return;
@@ -434,7 +434,7 @@ uint64_t EventLoop(void)
 			MouseEvent(ev.evValue, ev.evValue2);
 			break;
 		case SE_CONSOLE:
-            Editor::Get()->getGUI()->setConsoleActive(true);
+            Editor::GetGUI()->setConsoleActive(true);
 			break;
 		default:
 			Error("Com_EventLoop: bad event type %i", ev.evType);

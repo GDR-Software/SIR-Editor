@@ -1,6 +1,7 @@
 #include "Common.hpp"
 #include <stdint.h>
 #include <stdlib.h>
+#include "Editor.h"
 #include "Zone.h"
 
 /*
@@ -42,14 +43,14 @@ typedef struct memzone_s memzone_t;
 // struct members are ordered to optimize for alignment and object size
 typedef struct memblock_s
 {
-	char name[14];					// name of the allocation
+	const char *name;				// name of the allocation
 	memzone_t *zone;				// pointer to the zone the block belongs to (more than one zones)
 	struct memblock_s *next;		// next memblock
     struct memblock_s *prev;		// prev memblock
 	void **user;					// memblock user
-	uint32_t size;					// size of the block, not including size of the header
+	uint64_t size;					// size of the block, not including size of the header
     uint32_t tag;					// memblock tag
-    uint64_t id;					// should be ZONEID
+    uint32_t id;					// should be ZONEID
 } memblock_t;
 
 struct memzone_s
@@ -71,11 +72,6 @@ static void Z_MergeNB(memblock_t *block);
 static void Z_MergePB(memblock_t *block);
 static void Z_Defrag(void);
 
-void* operator new[](size_t size, size_t alignment, size_t alignmentOffset, const char* pName, int flags, unsigned debugFlags, const char* file, int line)
-{
-	return ::operator new[](size, std::align_val_t(alignment));
-}
-
 static void Z_Print_f(void)
 {
 	Z_Print(true);
@@ -95,6 +91,7 @@ inline const char *Z_TagToString(int tag)
 	case TAG_SEARCH_PATH: return "TAG_SEARCH_PATH";
 	case TAG_BFF: return "TAG_BFF";
 	case TAG_HUNK: return "TAG_HUNK";
+	case TAG_PROJECT: return "TAG_PROJECT";
 	};
 	Error("Unkown Tag: %i", tag);
 	return "Unkown Tag";
@@ -118,7 +115,7 @@ void Z_InitZone(memzone_t *zone, uint64_t size)
 
 	base->tag = TAG_FREE;
 	base->id = ZONEID;
-	N_strncpyz(base->name, "base", sizeof(base->name));
+	base->name = "freed";
 }
 
 static byte *Z_InitBase(uint64_t *size, uint64_t default_ram, uint64_t min_ram)
@@ -174,7 +171,7 @@ void Z_Init(void)
 	Printf("Z_Init: smallzone initialized from %p -> %p, size is %5.08f MiB",
 		(void *)smallzone, (void *)((byte *)smallzone+smallzone->size), (double)smallzone->size / 1024 / 1024);
 
-    Cmd_AddCommand("zoneinfo", Z_Print_f);
+    Editor::Get()->registerCommand("zoneinfo", Z_Print_f);
 }
 
 void Z_TouchMemory(uint64_t *sum)
@@ -186,22 +183,18 @@ void Z_TouchMemory(uint64_t *sum)
 		if (block->next == &mainzone->blocklist) {
 			break; // all blocks have been hit
 		}
-		if (block->tag != TAG_FREE) {
-			j = block->size >> 2;
-			for (i = 0; i < j; i += 16) {
-				*sum += ((uint32_t *)block)[i];
-			}
+		j = block->size >> 2;
+		for (i = 0; i < j; i += 16) {
+			*sum += ((uint32_t *)block)[i];
 		}
 	}
 	for (block = smallzone->blocklist.next;; block = block->next) {
 		if (block->next == &smallzone->blocklist) {
 			break; // all blocks have been hit
 		}
-		if (block->tag != TAG_FREE) {
-			j = block->size >> 2;
-			for (i = 0; i < j; i += 16) {
-				*sum += ((uint32_t *)block)[i];
-			}
+		j = block->size >> 2;
+		for (i = 0; i < j; i += 16) {
+			*sum += ((uint32_t *)block)[i];
 		}
 	}
 }
@@ -228,23 +221,36 @@ typedef struct
 	uint64_t filesystemBytes;
 	uint64_t cachedBytes;
 	uint64_t purgeableBytes;
-	uint64_t levelBytes;
+	uint64_t projectBytes;
 	uint64_t otherBytes;
 	uint64_t audioBytes;
 } zone_stats_t;
 
+static void Z_Printf(const char *fmt, ...)
+{
+	va_list argptr;
+	char msg[8192];
+
+	va_start(argptr, fmt);
+	vsnprintf(msg, sizeof(msg), fmt, argptr);
+	va_end(argptr);
+
+	fprintf(stdout, "%s\n", msg);
+	Editor::GetGUI()->Print("%s", msg);
+}
+
 static void Z_DisplayStats(const zone_stats_t *stats)
 {
-	Printf( "%8lu bytes total in %s", stats->zonesize, stats->zone );
-	Printf( "%8lu bytes free in %s", stats->freeBytes, stats->zone );
-	Printf( "    %8lu bytes in renderer segment", stats->rendererBytes );
-	Printf( "    %8lu bytes in filesystem segment", stats->filesystemBytes );
-	Printf( "    %8lu bytes in cache segment", stats->cachedBytes );
-	Printf( "    %8lu bytes in purgeable segment", stats->purgeableBytes );
-	Printf( "    %8lu bytes in level segment", stats->levelBytes );
-	Printf( "    %8lu bytes in audio segment", stats->audioBytes );
-	Printf( "    %8lu bytes in other", stats->otherBytes );
-	Printf( " " );
+	Z_Printf( "%8lu bytes total in %s", stats->zonesize, stats->zone );
+	Z_Printf( "%8lu bytes free in %s", stats->freeBytes, stats->zone );
+	Z_Printf( "    %8lu bytes in renderer segment", stats->rendererBytes );
+	Z_Printf( "    %8lu bytes in filesystem segment", stats->filesystemBytes );
+	Z_Printf( "    %8lu bytes in cache segment", stats->cachedBytes );
+	Z_Printf( "    %8lu bytes in purgeable segment", stats->purgeableBytes );
+	Z_Printf( "    %8lu bytes in project segment", stats->projectBytes );
+	Z_Printf( "    %8lu bytes in audio segment", stats->audioBytes );
+	Z_Printf( "    %8lu bytes in other", stats->otherBytes );
+	Z_Printf( " " );
 }
 
 static void Z_GetStats(zone_stats_t *stats, const char *name, const memzone_t *zone)
@@ -267,8 +273,8 @@ static void Z_GetStats(zone_stats_t *stats, const char *name, const memzone_t *z
 		case TAG_STATIC: // non-specific stuff
 			stats->otherBytes += block->size;
 			break;
-		case TAG_LEVEL:
-			stats->levelBytes += block->size;
+		case TAG_PROJECT:
+			stats->projectBytes += block->size;
 			break;
 		case TAG_SFX:
 		case TAG_MUSIC:
@@ -295,7 +301,7 @@ void Zone_Stats(void)
 	Z_GetStats(&stats, "mainzone", mainzone);
 	Z_DisplayStats(&stats);
 
-	Printf( " " );
+	Z_Printf( " " );
 
 	Z_GetStats(&stats, "smallzone", smallzone);
 	Z_DisplayStats(&stats);
@@ -377,7 +383,7 @@ char *Z_Strdup(const char *str)
 	}
 #endif
 	len = strlen(str) + 1;
-	s = (char *)Z_Malloc(len, TAG_STATIC, &s, "string");
+	s = (char *)Z_SMalloc(len, TAG_STATIC, &s, "string");
 	N_strncpyz(s, str, len);
 	return s;
 }
@@ -398,7 +404,7 @@ char *Z_StrdupTag(const char *str, int tag)
 	}
 #endif
 	len = strlen(str) + 1;
-	s = (char *)Z_Malloc(len, tag, &s, "string");
+	s = (char *)Z_SMalloc(len, tag, &s, "string");
 	N_strncpyz(s, str, len);
 	return s;
 }
@@ -421,7 +427,7 @@ static void Z_ScanForBlock(memzone_t *zone, void *start, void *end)
 			len = (block->size - sizeof(memblock_t)) / sizeof(void *);
 			for (i = 0; i < len; ++i) {
 				if (start <= mem[i] && mem[i] <= end) {
-					Printf(DEV,
+					Printf(
 						"WARNING: "
 						"%p (%s) has dangling pointer into freed block "
 						"%p (%s) (%p -> %p)",
@@ -473,7 +479,7 @@ static void Z_Defrag(void)
 {
 	memblock_t* block;
 
-    Printf(DEV, "Defragmenting zone");
+    Printf("Defragmenting zone");
 
 	for (block = mainzone->blocklist.next;; block = block->next) {
 		if (block == &mainzone->blocklist) {
@@ -519,9 +525,9 @@ void Z_Free(void *ptr)
 	block->tag = TAG_FREE;
 	block->user = (void **)NULL;
 	block->id = ZONEID;
-	N_strncpyz(block->name, "freed", sizeof(block->name));
+	block->name = "freed";
 	
-#ifdef _NOMAD_DEBUG
+#ifndef NDEBUG
 	memset(ptr, 0, block->size - sizeof(memblock_t));
 	Z_ScanForBlock(block->zone, ptr, (byte *)ptr + block->size - sizeof(memblock_t));
 #endif
@@ -607,8 +613,8 @@ static void *Z_MainAlloc(uint32_t size, int tag, void *user, const char *name)
 	base->id = ZONEID;
 	base->zone = mainzone;
 
-    N_strncpyz(base->name, name, sizeof(base->name));
-#ifdef _NOMAD_DEBUG
+	base->name = name;
+#ifndef NDEBUG
 	Z_CheckHeap();
 #endif
     return retn;
@@ -694,8 +700,8 @@ static void *Z_SmallAlloc(uint32_t size, int tag, void *user, const char *name)
 	base->id = ZONEID;
 	base->zone = smallzone;
 	
-	N_strncpyz(base->name, name, sizeof(base->name));
-#ifdef _NOMAD_DEBUG
+	base->name = name;
+#ifndef NDEBUG
 	Z_CheckHeap();
 #endif
 
@@ -712,21 +718,36 @@ from within the zone without calling malloc
 */
 void *Z_Malloc(uint32_t size, int tag, void *user, const char *name)
 {
-#ifdef _NOMAD_DEBUG
+#ifndef NDEBUG
 	Z_CheckHeap();
 #endif
-	if (tag >= TAG_PURGELEVEL && !user && (!N_stricmpn("zalloc", name, 7))) // not a smart pointer
+	if (tag >= TAG_PURGELEVEL && !user && (N_stricmpn("zalloc", name, 7))) // not a smart pointer
 		Error("Z_Malloc: an owner is required for purgable blocks, name: %s", name);
 	if (!size)
 		Error("Z_Malloc: bad size, name: %s", name);
 	
-	// round to the cacheline
+	// round to the alignment
 	size += sizeof(memblock_t);
 	size = PAD(size, MEM_ALIGN);
-	if (size < 256) // small enough for the smallzone
-		return Z_SmallAlloc(size, tag, user, name);
 
 	return Z_MainAlloc(size, tag, user, name);
+}
+
+void *Z_SMalloc(uint32_t size, int tag, void *user, const char *name)
+{
+#ifndef NDEBUG
+	Z_CheckHeap();
+#endif
+	if (tag >= TAG_PURGELEVEL && !user && (N_stricmpn("zalloc", name, 7))) // not a smart pointer
+		Error("Z_Malloc: an owner is required for purgable blocks, name: %s", name);
+	if (!size)
+		Error("Z_Malloc: bad size, name: %s", name);
+
+	// round to the alignment
+	size += sizeof(memblock_t);
+	size = PAD(size, MEM_ALIGN);
+
+	return Z_SmallAlloc(size, tag, user, name);
 }
 
 void Z_ChangeTag(void *user, int tag)
@@ -757,7 +778,7 @@ void Z_ChangeName(void *ptr, const char* name)
 	if (block->id != ZONEID)
 		Error("Z_ChangeName: block id wasn't zoneid");
 	
-	N_strncpyz(block->name, name, sizeof(block->name));
+	base->name = name;
 }
 
 void Z_ChangeUser(void *newuser, void *olduser)
@@ -823,6 +844,7 @@ void Z_FreeTags(int lowtag, int hightag)
 	Printf("Total bytes freed: %lu", totalBytes);
 }
 
+
 static void Z_PrintZone(memzone_t *zone, bool all)
 {
 	memblock_t *block, *next;
@@ -834,8 +856,13 @@ static void Z_PrintZone(memzone_t *zone, bool all)
 	totalblocks = 0;
 	count = 0;
 	sum = 0;
-	uint64_t static_mem, purgable_mem, cached_mem, free_mem, audio_mem, total_memory;
-	static_mem = purgable_mem = cached_mem = free_mem = audio_mem = total_memory = 0;
+	uint64_t static_mem, purgable_mem, cached_mem, free_mem, audio_mem, total_memory, project_mem;
+	static_mem = 0;
+	purgable_mem = 0;
+	cached_mem = 0;
+	free_mem = 0;
+	total_memory = 0;
+	project_mem = 0;
 
 	for (block = zone->blocklist.next;; block = block->next) {
 		if (block == &zone->blocklist) {
@@ -846,6 +873,9 @@ static void Z_PrintZone(memzone_t *zone, bool all)
 		}
 		else if (block->tag == TAG_SFX || block->tag == TAG_MUSIC) {
 			audio_mem += block->size;
+		}
+		else if (block->tag == TAG_PROJECT) {
+			project_mem += block->size;
 		}
 		else if (block->tag == TAG_CACHE) {
 			cached_mem += block->size;
@@ -861,39 +891,39 @@ static void Z_PrintZone(memzone_t *zone, bool all)
 	const float s = totalMemory / 100.0f;
 
 	if (zone == mainzone) {
-		Printf("[MAINZONE HEAP]");
+		Z_Printf("[MAINZONE HEAP]");
 	}
 	else if (zone == smallzone) {
-		Printf("[SMALLZONE HEAP]");
+		Z_Printf("[SMALLZONE HEAP]");
 	}
-	Printf("          : %8lu total zone size", zone->size);
-	Printf("-------------------------");
-	Printf("-------------------------");
-	Printf("          : %8lu REMAINING", zone->size - static_mem - cached_mem - purgable_mem - audio_mem);
-	Printf("-------------------------");
-	Printf("(PERCENTAGES)");
-	Printf(
-			"%-8lu   %6.01f%%    static\n"
-			"%-8lu   %6.01f%%    cached\n"
-			"%-8lu   %6.01f%%    audio\n"
-			"%-8lu   %6.01f%%    purgable\n"
-			"%-8lu   %6.01f%%    free",
-		static_mem, (float)(static_mem*s),
-		cached_mem, (float)(cached_mem*s),
-		audio_mem, (float)(audio_mem*s),
-		purgable_mem, (float)(purgable_mem*s),
-		free_mem, (float)(free_mem*s));
+	Z_Printf("          : %8lu total zone size", zone->size);
+	Z_Printf("-------------------------");
+	Z_Printf("-------------------------");
+	Z_Printf("          : %8lu REMAINING", zone->size - static_mem - cached_mem - purgable_mem - audio_mem);
+	Z_Printf("-------------------------");
+	Z_Printf("(PERCENTAGES)");
+	Z_Printf(
+			"%-8lu   %2.03lf%%    static\n"
+			"%-8lu   %2.03lf%%    cached\n"
+			"%-8lu   %2.03lf%%    project\n"
+			"%-8lu   %2.03lf%%    purgable\n"
+			"%-8lu   %2.03lf%%    free\n",
+		static_mem, (double)static_mem*s,
+		cached_mem, (double)cached_mem*s,
+		project_mem, (double)project_mem*s,
+		purgable_mem, (double)purgable_mem*s,
+		free_mem, (double)free_mem*s);
 	Printf("-------------------------");
 
 	for (block = zone->blocklist.next; block != &zone->blocklist; block = block->next)
 		++blockcount[block->tag];
 
-	Printf("total purgable blocks: %lu", blockcount[TAG_PURGELEVEL]);
-	Printf("total cache blocks:    %lu", blockcount[TAG_CACHE]);
-	Printf("total free blocks:     %lu", blockcount[TAG_FREE]);
-	Printf("total static blocks:   %lu", blockcount[TAG_STATIC]);
-	Printf("total level blocks:    %lu", blockcount[TAG_LEVEL]);
-	Printf("-------------------------");
+	Z_Printf("total purgable blocks: %lu", blockcount[TAG_PURGELEVEL]);
+	Z_Printf("total cache blocks:    %lu", blockcount[TAG_CACHE]);
+	Z_Printf("total free blocks:     %lu", blockcount[TAG_FREE]);
+	Z_Printf("total static blocks:   %lu", blockcount[TAG_STATIC]);
+	Z_Printf("total level blocks:    %lu", blockcount[TAG_LEVEL]);
+	Z_Printf("-------------------------");
 	
 	for (block = zone->blocklist.next;; block = block->next) {
 		if (block == &zone->blocklist)
@@ -906,30 +936,30 @@ static void Z_PrintZone(memzone_t *zone, bool all)
 		name[14] = '\0';
 		
 		if (all)
-			Printf("%8p : %12i %16s %14s", (void *)block, block->size, Z_TagToString(block->tag), name);
+			Z_Printf("%8p : %12i %16s %14s", (void *)block, block->size, Z_TagToString(block->tag), name);
 	
 		if (block->next == &mainzone->blocklist) {
-			Printf("          : %8lu (TOTAL)", sum);
+			Z_Printf("          : %8lu (TOTAL)", sum);
 			count = 0;
 			sum = 0;
 		}
 	}
-	Printf("-------------------------");
-	Printf("%8lu total blocks\n\n", totalblocks);
+	Z_Printf("-------------------------");
+	Z_Printf("%8lu total blocks\n\n", totalblocks);
 }
 
 void Z_Print(bool all)
 {
 	Zone_Stats();
 
-	Printf("\n<---- Zone Allocation Daemon Heap Report ---->");
+	Z_Printf("\n<---- Zone Allocation Daemon Heap Report ---->");
 	Z_PrintZone(mainzone, all);
 	Z_PrintZone(smallzone, all);
 }
 
 void *Z_Realloc(void *ptr, uint32_t nsize, int tag, void *user, const char *name)
 {
-#ifdef _NOMAD_DEBUG
+#ifndef NDEBUG
 	Z_CheckHeap();
 #endif
 	void *p = Z_Malloc(nsize, tag, user, name);
@@ -947,7 +977,7 @@ void *Z_Realloc(void *ptr, uint32_t nsize, int tag, void *user, const char *name
 
 void* Z_Calloc(uint32_t size, int tag, void *user, const char *name)
 {
-#ifdef _NOMAD_DEBUG
+#ifndef NDEBUG
 	Z_CheckHeap();
 #endif
 	return memset(Z_Malloc(size, tag, user, name), 0, size);

@@ -4,9 +4,15 @@
 #pragma once
 
 #include <functional>
-#include "Map.h"
+#include "imgui.h"
+#include "imgui_impl_sdl2.h"
+#include "imgui_impl_opengl3.h"
 #include "GUI.h"
-#include "Project.h"
+#include "EditorManager.h"
+#include "ProjectManager.h"
+#include "MapManager.h"
+#include "TilesetManager.h"
+#include "TextureManager.h"
 
 class GUI;
 
@@ -26,13 +32,13 @@ public:
 	inline const Command* getNext(void) const
 	{ return next; }
 	
-	inline const eastl::string& getName(void) const
+	inline const string_t& getName(void) const
 	{ return name; }
 	inline void Run(void)
 	{ func(); }
 private:
-	eastl::string name;
-	std::function<void(void)> func;
+	string_t name;
+	void (*func)(void);
 	Command *next;
 };
 
@@ -53,10 +59,10 @@ public:
 	~Editor();
 	
     static void Init(int argc, char **argv);
-	static void ListFiles(eastl::vector<eastl::string>& fileList, const std::filesystem::path& path,
-		const eastl::vector<eastl::string>& exts);
-	static bool SaveJSON(const json& data, const eastl::string& path);
-	static bool LoadJSON(json& data, const eastl::string& path);
+	static void ListFiles(vector_t<path_t>& fileList, const path_t& path, const vector_t<const char *>& exts);
+	static bool SaveJSON(const json& data, const path_t& path);
+	static bool LoadJSON(json& data, const path_t& path);
+	static void CheckExtension(path_t& path, const char *ext);
 	static inline void SetWindowParms(const ImVec2& windowPos, const ImVec2& windowSize)
 	{
 		ImGui::SetWindowPos(windowPos);
@@ -64,8 +70,8 @@ public:
 	}
 	static inline void GetWindowParms(ImVec2& windowPos, ImVec2& windowSize)
 	{
-		ImGui::GetWindowPos(windowPos);
-		ImGui::GetWindowSize(windowSize);
+		windowPos = ImGui::GetWindowPos();
+		windowSize = ImGui::GetWindowSize();
 	}
 	static inline void ResetWindowParms(const ImVec2& windowPos, const ImVec2& windowSize)
 	{
@@ -75,7 +81,7 @@ public:
 
     void DrawFileMenu(void);
     void DrawEditMenu(void);
-	void DrawToolsMenu(void);
+	void DrawWizardMenu(void);
 	void DrawPluginsMenu(void);
 	void DrawHelpMenu(void);
 
@@ -97,19 +103,82 @@ public:
 	{ return editorMode; }
 	inline void clearModeBits(int mode)
 	{ editorMode &= ~mode; }
-	
-	inline static eastl::unique_ptr<Editor>& Get(void)
+
+	inline static object_ptr_t<CMap>& GetMap(void)
+	{ return editor->cMap; }
+	inline static object_ptr_t<CProject>& GetProject(void)
+	{ return editor->cProject; }
+	inline static object_ptr_t<CTileset>& GetTileset(void)
+	{ return editor->cTileset; }
+	inline static object_ptr_t<CProjectManager>& GetProjManager(void)
+	{ return editor->cProjectManager; }
+	inline static object_ptr_t<CMapManager>& GetMapManager(void)
+	{ return editor->cMapManager; }
+	inline static object_ptr_t<CTilesetManager>& GetTilesetManager(void)
+	{ return editor->cTilesetManager; }
+	inline static object_ptr_t<CTextureManager>& GetTextureManager(void)
+	{ return editor->cTextureManager; }
+	inline static object_ptr_t<Editor>& Get(void)
 	{ return editor; }
+	inline static object_ptr_t<GUI>& GetGUI(void)
+	{ return editor->cGUI; }
 	inline static const std::filesystem::path& GetPWD(void)
 	{ return curPath; }
+	static bool IsAllocated(void);
+
+	template<typename T>
+	inline object_ptr_t<T> AddManager(const eastl::string& name)
+	{
+		object_ptr_t<T> mem = Allocate<T>();
+		managerList.try_emplace(name);
+		managerList.at(name) = dynamic_cast<CEditorManager*>(mem);
+		return mem;
+	}
+	template<typename T>
+	inline object_ptr_t<T> GetManager(const eastl::string& name)
+	{ return dynamic_cast<T*>(managerList.at(name)); }
+
+	inline static bool UseInternalMaps(void)
+	{ return editor->useInternalMaps; }
+	inline static bool UseInternalTileset(void)
+	{ return editor->useInternalTilesets; }
 private:
-	eastl::unique_ptr<GUI> cGUI;
+	struct FileEntry
+	{
+		vector_t<FileEntry> DirList;
+	    path_t path;
+	    bool isDirectory;
+	};
+
+	void RecursiveDirectoryIterator(const path_t& path, vector_t<FileEntry>& dirList, uint32_t& depth);
+	void DisplayFileCache(const vector_t<FileEntry>& cache, uint32_t& depth);
+	void InitFiles(void);
+	void ReloadFiles(void);
+	void SaveFileCache(void);
+	void LoadFileCache(void);
+
+	object_ptr_t<CProject> cProject;
+	object_ptr_t<CMap> cMap;
+	object_ptr_t<CTileset> cTileset;
+	object_ptr_t<GUI> cGUI;
+
+	vector_t<FileEntry> fileCache;
+	string_hash_t<object_ptr_t<CEditorManager>> managerList;
+
+	vector_t<directory_entry_t> entryCache;
+
+	object_ptr_t<CProjectManager> cProjectManager;
+	object_ptr_t<CTilesetManager> cTilesetManager;
+	object_ptr_t<CMapManager> cMapManager;
+	object_ptr_t<CTextureManager> cTextureManager;
 	
-	Command *cmdList;
 	int editorMode;
+
+	bool useInternalMaps;
+	bool useInternalTilesets;
 	
-	static std::filesystem::path curPath;
-	static eastl::unique_ptr<Editor> editor;
+	static path_t curPath;
+	static object_ptr_t<Editor> editor;
 };
 
 #endif

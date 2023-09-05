@@ -7,34 +7,29 @@ class CEditorTool
 {
 public:
     CEditorTool(void);
-    ~CEditorTool() = default;
+    virtual ~CEditorTool();
 
-    virtual bool Load(const std::string& path) = 0;
-    virtual bool Load(const json& data) = 0;
-    virtual bool Save(const std::string& path) const = 0;
-    virtual bool Save(json& data) const = 0;
-    virtual void Clear(void) = 0;
+    virtual bool Load(const string_t& path);
+    virtual bool Load(const json& data);
+    virtual bool Save(void) const;
+    virtual bool Save(const string_t& path) const;
+    virtual bool Save(json& data) const;
+    virtual void Clear(void);
 
-    inline void *operator new(uint64_t size)
-    { return Z_Malloc(size, TAG_STATIC, NULL, "op new"); }
-    inline void *operator new[](uint64_t size)
-    { return Z_Malloc(size, TAG_STATIC, NULL, "op new"); }
-    inline void operator delete(void *ptr)
-    { Z_Free(ptr); }
-    inline void operator delete[](void *ptr)
-    { Z_Free(ptr); }
-
-    virtual inline void SetName(const eastl::string& _name)
-    { name = _name; }
+    virtual void SetPath(const path_t& _path);
+    virtual void SetName(const string_t& _name);
     virtual inline void SetModified(bool _modified)
     { modified = _modified; }
-    virtual inline const eastl::string& GetName(void) const
+    virtual inline const string_t& GetName(void) const
     { return name; }
+    virtual inline const path_t& GetPath(void) const
+    { return path; }
     virtual bool GetModified(void) const
     { return modified; }
 protected:
-    eastl::string name;
-    bool modified;
+    string_t name;
+    path_t path; // absolute path
+    mutable bool modified;
 };
 
 #endif

@@ -12,40 +12,36 @@ struct Tile;
 class CTileset : public CEditorTool
 {
 public:
-    CTileset();
+    CTileset(void);
     virtual ~CTileset();
 
     const Tile *getTile(uint32_t y, uint32_t x) const;
     Tile *getTile(uint32_t y, uint32_t x);
 
-    void LoadTexture(const eastl::string& path);
     void GenTiles(void);
-
-    virtual bool Load(const std::string& path) override;
-    virtual bool Load(const json& data) override;
-    virtual bool Save(const std::string& path) const override;
-    virtual bool Save(json& data) const override;
-    virtual void Clear(void) override;
+    void SetTileDims(const int dims[2]);
+    void SetSheetDims(const int dims[2]);
+    
+    virtual bool Load(const string_t& path);
+    virtual bool Load(const json& data);
+    virtual bool Save(const string_t& path) const;
+    virtual bool Save(json& data) const;
+    virtual void Clear(void);
 private:
-    Tile *tiles
-    eastl::unique_ptr<Texture> texture;
+    bool LoadBIN(const string_t& path);
+    bool LoadJSON(const string_t& path);
+    bool SaveBIN(const string_t& path) const;
+    bool SaveJSON(const string_t& path) const;
 
-    int numTiles;
-    int width;
-    int height;
+    eastl::vector<Tile> tiles;
+    object_ptr_t<CTexture> cTexture;
 
-    int tileWidth;
-    int tileHeight;
+    uint32_t numTiles;
+    uint32_t width;
+    uint32_t height;
+
+    uint32_t tileWidth;
+    uint32_t tileHeight;
 };
-
-inline const Tile* CTileset::getTile(uint32_t y, uint32_t x) const
-{
-    return &tiles[y * width + x];
-}
-
-inline Tile* CTileset::getTile(uint32_t y, uint32_t x)
-{
-    return &tiles[y * width + x];
-}
 
 #endif

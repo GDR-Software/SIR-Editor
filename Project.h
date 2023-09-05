@@ -3,34 +3,48 @@
 
 #pragma once
 
-class CProject
+#include "Map.h"
+#include "Tileset.h"
+#include "EditorTool.h"
+
+class CProject : public CEditorTool
 {
 public:
     CProject(void);
-    ~CProject() = default;
+    virtual ~CProject();
 
-    bool Save(const eastl::string& path) const;
-    bool Load(const eastl::string& path);
+    virtual bool Save(const string_t& path) const;
+    virtual bool Save(void) const;
+    virtual bool Load(const string_t& path);
 
     void New(void);
 
-    inline const eastl::string& GetName(void) const
+    inline void SetMap(const object_ptr_t<CMap>& nMap)
+    { cMap = nMap; }
+    inline void SetTileset(const object_ptr_t<CTileset>& nTileset)
+    { cTileset = nTileset; }
+
+    inline const string_t& GetName(void) const
     { return name; }
+    inline void SetProjectDirectory(const std::filesystem::path& dir)
+    { projectDirectory = dir; }
+    inline void SetAssetDirectory(const std::filesystem::path& dir)
+    { assetDirectory = dir; }
     inline const std::filesystem::path& GetProjectDirectory(void) const
     { return projectDirectory; }
     inline const std::filesystem::path& GetAssetDirectory(void) const
-    { return return assetDirectory; }
-    inline const CMap *GetMap(void) const
+    { return assetDirectory; }
+    inline const object_ptr_t<CMap>& GetMap(void) const
     { return cMap; }
-    inline const CTileset *GetTileset(void) const
+    inline const object_ptr_t<CTileset>& GetTileset(void) const
     { return cTileset; }
 private:
-    eastl::string name;
+    string_t name;
     std::filesystem::path projectDirectory;
     std::filesystem::path assetDirectory;
 
-    CMap *cMap;
-    CTileset *cTileset;
+    object_ptr_t<CMap> cMap;
+    object_ptr_t<CTileset> cTileset;
 };
 
 #endif
