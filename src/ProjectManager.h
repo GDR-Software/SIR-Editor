@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include "EditorManager.h"
-#include "Project.h"
-
 class CProjectManager : public CEditorManager
 {
 public:

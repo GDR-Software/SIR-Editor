@@ -28,9 +28,12 @@ bool CProject::Save(const string_t& path) const
     Printf("Project path: %s", path.c_str());
 
     data["name"] = name;
-
-    cMap->Save(data);
+    
+    cMap->Save(cMap->GetPath().c_str());
     cTileset->Save(data);
+
+//    cMap->Save(data);
+//    cTileset->Save(data);
     
     if (!Editor::SaveJSON(data, this->path)) {
         Error("Failed to save project!");
@@ -55,6 +58,7 @@ bool CProject::Save(void) const
 
     data["name"] = name;
 
+    cMap->SetModified(true);
     if (Editor::UseInternalMaps())
         cMap->Save(data["imap"]);
     else

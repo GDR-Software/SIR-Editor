@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <SDL2/SDL.h>
 #include "Map.h"
 #include "Editor.h"
 #include <glad/glad.h>

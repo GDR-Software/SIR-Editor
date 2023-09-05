@@ -3,10 +3,6 @@
 
 #pragma once
 
-#include "Map.h"
-#include "Tileset.h"
-#include "EditorTool.h"
-
 class CProject : public CEditorTool
 {
 public:

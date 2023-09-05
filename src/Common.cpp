@@ -30,6 +30,76 @@ void* operator new[](size_t size, size_t alignment, size_t alignmentOffset, cons
 #endif
 }
 
+uint64_t LoadFile(const char *filename, void **buffer)
+{
+	void *buf;
+	uint64_t length;
+	FILE *fp;
+
+	fp = SafeOpenRead(BuildOSPath(Editor::GetPWD(), "Data/", filename));
+
+	length = FileLength(fp);
+	buf = Malloc(length);
+
+	SafeRead(buf, length, fp);
+	fclose(fp);
+
+	*buffer = buf;
+
+	return length;
+}
+
+uint64_t LittleLong(uint64_t l)
+{
+#ifdef __BIG_ENDIAN__
+	byte b1, b2, b3, b4, b5, b6, b7;
+
+	b1 = l & 0xff;
+	b2 = (l >> 8) & 0xff;
+	b3 = (l >> 16) & 0xff;
+	b4 = (l >> 24) & 0xff;
+	b5 = (l >> 32) & 0xff;
+	b6 = (l >> 40) & 0xff;
+	b7 = (l >> 48) & 0xff;
+
+	return ((uint64_t)b1<<48) + ((uint64_t)b2<<40) + ((uint64_t)b3<<32) + ((uint64_t)b4<<24) + ((uint64_t)b5<<16) + ((uint64_t)b6<<8) + b7;
+#else
+	return l;
+#endif
+}
+
+uint32_t LittleInt(uint32_t l)
+{
+#ifdef __BIG_ENDIAN__
+	byte b1, b2, b3, b4;
+
+	b1 = l & 0xff;
+	b2 = (l >> 8) & 0xff;
+	b3 = (l >> 16) & 0xff;
+	b4 = (l >> 24) & 0xff;
+
+	return ((uint32_t)b1<<24) + ((uint32_t)b2<<16) + ((uint32_t)b3<<8) + b4;
+#else
+	return l;
+#endif
+}
+
+float LittleFloat(float f)
+{
+	typedef union {
+	    float	f;
+		uint32_t i;
+	} _FloatByteUnion;
+
+	const _FloatByteUnion *in;
+	_FloatByteUnion out;
+
+	in = (_FloatByteUnion *)&f;
+	out.i = LittleInt(in->i);
+
+	return out.f;
+}
+
 void Exit(void)
 {
     Printf("Exiting app (code : 1)");

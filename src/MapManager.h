@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include "EditorManager.h"
-#include "Map.h"
-
 class CMapManager : public CEditorManager
 {
 public:

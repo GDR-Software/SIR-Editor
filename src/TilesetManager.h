@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include "EditorManager.h"
-#include "Tileset.h"
-
 class CTilesetManager : public CEditorManager
 {
 public:

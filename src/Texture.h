@@ -4,7 +4,6 @@
 #pragma once
 
 #include <stb/stb_image.h>
-#include "EditorTool.h"
 
 class CTexture : public CEditorTool
 {

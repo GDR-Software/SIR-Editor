@@ -4,10 +4,6 @@
 #pragma once
 
 #include <glm/glm.hpp>
-#include "EditorTool.h"
-#include "Texture.h"
-
-struct Tile;
 
 class CTileset : public CEditorTool
 {
@@ -15,8 +11,8 @@ public:
     CTileset(void);
     virtual ~CTileset();
 
-    const Tile *getTile(uint32_t y, uint32_t x) const;
-    Tile *getTile(uint32_t y, uint32_t x);
+    const maptile_t *getTile(uint32_t y, uint32_t x) const;
+    maptile_t *getTile(uint32_t y, uint32_t x);
 
     void GenTiles(void);
     void SetTileDims(const int dims[2]);
@@ -33,7 +29,7 @@ private:
     bool SaveBIN(const string_t& path) const;
     bool SaveJSON(const string_t& path) const;
 
-    eastl::vector<Tile> tiles;
+    vector_t<maptile_t> tiles;
     object_ptr_t<CTexture> cTexture;
 
     uint32_t numTiles;

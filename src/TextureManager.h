@@ -3,9 +3,6 @@
 
 #pragma once
 
-#include "EditorManager.h"
-#include "Texture.h"
-
 class CTextureManager : public CEditorManager
 {
 public:

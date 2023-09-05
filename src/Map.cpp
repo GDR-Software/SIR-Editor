@@ -7,7 +7,8 @@ bool SaveMap(const CMap *cMap, const char *filename);
 
 CMap::CMap(void)
 {
-    name = "untitled-map.map";
+    name = "untitled-map.bmf";
+    path = BuildOSPath(Editor::GetPWD(), "Data/", "untitled-map.bmf");
     width = 0;
     height = 0;
 }
@@ -19,9 +20,9 @@ CMap::~CMap()
 /*
 CMap::AddCheckpoint: returns false if any of the parms are invalid
 */
-bool CMap::AddCheckpoint(const checkpoint_t& c)
+bool CMap::AddCheckpoint(const mapcheckpoint_t& c)
 {
-    if (c[0] >= width || c[0] < 0 || c[1] >= height || c[1] < 0) {
+    if (c.x >= width || c.x < 0 || c.y >= height || c.x < 0) {
         return false;
     }
 
@@ -39,11 +40,11 @@ bool CMap::AddSpawn(const glm::vec2& pos, uint32_t entityType, uint32_t entityId
         return false;
     }
 
-    spawn_t s;
-    s[0] = pos[0];
-    s[1] = pos[1];
-    s[2] = entityType;
-    s[3] = entityId;
+    mapspawn_t s;
+    s.pos[0] = pos[0];
+    s.pos[1] = pos[1];
+    s.entitytype = entityType;
+    s.entityid = entityId;
 
     spawns.emplace_back(s);
 
@@ -86,7 +87,7 @@ bool CMap::Load(const string_t& path)
     if (IsAbsolutePath(path)) {
         rpath = BuildOSPath(Editor::GetPWD(), "Data/", path.c_str());
     }
-    if (!ext || !N_stricmp(ext, ".jmap")) {
+    if (!ext || N_stricmp(ext, ".jmap") && N_stricmp(ext, ".bmf")) {
         return false;
     }
 
@@ -123,7 +124,7 @@ bool CMap::Load(const json& data)
     for (const auto& it : map.at("checkpoints")) {
         sprintf(s, "#%i", count);
         const eastl::array<uint32_t, 2>& tmp = it.at(s).get<eastl::array<uint32_t, 2>>();
-        memcpy(checkpoints[count].data(), tmp.data(), sizeof(checkpoint_t));
+        memcpy(&checkpoints[count], tmp.data(), sizeof(mapcheckpoint_t));
         ++count;
     }
     
@@ -131,7 +132,7 @@ bool CMap::Load(const json& data)
     for (const auto& it : map.at("spawns")) {
         sprintf(s, "#%i", count);
         const eastl::array<uint32_t, 4>& tmp = it.at(s).get<eastl::array<uint32_t, 4>>();
-        memcpy(spawns[count].data(), tmp.data(), sizeof(spawn_t));
+        memcpy(&spawns[count], tmp.data(), sizeof(mapspawn_t));
         ++count;
     }
     
@@ -153,7 +154,7 @@ bool CMap::Save(json& data) const
     count = 0;
     for (const auto& it : checkpoints) {
         sprintf(s, "#%i", count);
-        save[s] = { it.c[0], it.c[1] };
+        save[s] = { it.x, it.y };
         ++count;
     }
     map["checkpoints"] = save;
@@ -162,7 +163,7 @@ bool CMap::Save(json& data) const
     count = 0;
     for (const auto& it : spawns) {
         sprintf(s, "#%i", count);
-        save[s] = { it.s[0], it.s[1], it.s[2], it.s[3] };
+        save[s] = { it.pos[0], it.pos[1], it.entitytype, it.entityid };
         ++count;
     }
     map["spawns"] = save;
@@ -172,14 +173,26 @@ bool CMap::Save(json& data) const
 
 bool CMap::SaveBIN(const string_t& path) const
 {
+    char *rpath;
+    const char *ext;
+
     if (!modified) {
         return true; // no need to save if its already been saved
     }
 
-    Printf("Saving map file '%s'", path.c_str());
+    rpath = strdupa(path.c_str());
+    ext = COM_GetExtension(path.c_str());
+    if (IsAbsolutePath(path)) {
+        rpath = BuildOSPath(Editor::GetPWD(), "Data/", path.c_str());
+    }
+    if (!ext || N_stricmp(ext, ".bmf")) {
+        return false;
+    }
 
-    if (!SaveMap(this, path.c_str())) {
-        Printf("WARNING: failed to save map file '%s'", path.c_str());
+    Printf("Saving map file '%s'", rpath);
+
+    if (!SaveMap(this, rpath)) {
+        Printf("WARNING: failed to save map file '%s'", rpath);
         return false;
     }
     return true;
@@ -200,14 +213,12 @@ bool CMap::Save(const string_t& path) const
         rpath = BuildOSPath(Editor::GetPWD(), "Data/", path.c_str());
     }
     tmp = rpath;
-    Editor::CheckExtension(tmp, ".jmap");
+    Editor::CheckExtension(tmp, ".bmf");
 
     Printf("Saving map file '%s'", tmp.c_str());
 
-    Save(data);
-
-    if (!Editor::SaveJSON(data, tmp)) {
-        Printf("WARNING: failed to save map file '%s'", tmp.c_str());
+    if (!SaveMap(this, rpath)) {
+        Printf("WARNING: failed to save map file '%s'", rpath);
         return false;
     }
 

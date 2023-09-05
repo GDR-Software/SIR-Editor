@@ -20,6 +20,7 @@
 #include <EASTL/unordered_map.h>
 #include <filesystem>
 #include <set>
+#include <SDL2/SDL.h>
 #include "Zone.h"
 #include <foonathan_memory/foonathan/memory/namespace_alias.hpp>
 #include <foonathan_memory/foonathan/memory/static_allocator.hpp>
@@ -242,6 +243,8 @@ typedef unsigned char byte;
 
 using json = nlohmann::json;
 
+#define MAX_GDR_PATH 64
+
 extern int myargc;
 extern char **myargv;
 
@@ -251,6 +254,7 @@ bool IsAbsolutePath(const string_t& path);
 inline const char *GetAbsolutePath(const path_t& path)
 { return IsAbsolutePath(path.c_str()) ? path.c_str() : GetFilename(path.c_str()); }
 
+uint64_t LoadFile(const char *filename, void **buffer);
 void *SafeMalloc(size_t size);
 char* BuildOSPath(const path_t& curPath, const string_t& gamepath, const char *npath);
 void Exit(void);
@@ -267,6 +271,9 @@ void N_strncpy (char *dest, const char *src, size_t count);
 void N_strncpyz (char *dest, const char *src, size_t count);
 bool N_isanumber(const char *s);
 int N_stricmp( const char *s1, const char *s2 );
+uint64_t LittleLong(uint64_t l);
+uint32_t LittleInt(uint32_t l);
+float LittleFloat(float f);
 int N_stricmpn (const char *str1, const char *str2, size_t n);
 const char *N_stristr(const char *s, const char *find);
 #ifdef _WIN32
@@ -287,6 +294,18 @@ uint64_t FileLength(FILE *fp);
 void TokenizeString(const char *str, bool ignoreQuotes);
 uint32_t Argc(void);
 const char *Argv(uint32_t index);
+
+#include "MapFile.h"
+#include "EditorTool.h"
+#include "Texture.h"
+#include "Tileset.h"
+#include "Map.h"
+#include "Project.h"
+#include "EditorManager.h"
+#include "TilesetManager.h"
+#include "ProjectManager.h"
+#include "TextureManager.h"
+#include "MapManager.h"
 
 #include "keycodes.h"
 

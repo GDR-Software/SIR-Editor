@@ -3,58 +3,11 @@
 
 #pragma once
 
-#include "Editor.h"
-#include "EditorTool.h"
-#include "Tileset.h"
-
 #include <glm/vec3.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #define MAX_MAP_WIDTH 1024
 #define MAX_MAP_HEIGHT 1024
-
-struct Tile
-{
-    glm::vec2 texcoords[4];
-    glm::vec3 pos;
-    uint32_t index;
-    bool empty;
-
-    inline Tile(void) = default;
-    inline Tile(Tile &) = default;
-};
-
-typedef struct
-{
-    uint32_t c[4];
-
-    inline operator uint32_t *(void)
-    { return c; }
-    inline operator const uint32_t *(void) const
-    { return c; }
-    inline uint32_t& operator[](int index)
-    { return c[index]; }
-    inline uint32_t *data(void)
-    { return c; }
-    inline const uint32_t *data(void) const
-    { return c; }
-} checkpoint_t;
-
-typedef struct
-{
-    uint32_t s[4];
-
-    inline operator uint32_t *(void)
-    { return s; }
-    inline operator const uint32_t *(void) const
-    { return s; }
-    inline uint32_t& operator[](int index)
-    { return s[index]; }
-    inline uint32_t *data(void)
-    { return s; }
-    inline const uint32_t *data(void) const
-    { return s; }
-} spawn_t;
 
 class CMap : public CEditorTool
 {
@@ -74,29 +27,29 @@ public:
     { return width; }
     inline uint32_t GetHeight(void) const
     { return height; }
-    inline const vector_t<checkpoint_t>& GetCheckpoints(void) const
+    inline const vector_t<mapcheckpoint_t>& GetCheckpoints(void) const
     { return checkpoints; }
-    inline const vector_t<spawn_t>& GetSpawns(void) const
+    inline const vector_t<mapspawn_t>& GetSpawns(void) const
     { return spawns; }
-    inline const vector_t<Tile>& GetTiles(void) const
+    inline const vector_t<maptile_t>& GetTiles(void) const
     { return tiles; }
-    inline vector_t<checkpoint_t>& GetCheckpoints(void)
+    inline vector_t<mapcheckpoint_t>& GetCheckpoints(void)
     { return checkpoints; }
-    inline vector_t<spawn_t>& GetSpawns(void)
+    inline vector_t<mapspawn_t>& GetSpawns(void)
     { return spawns; }
-    inline vector_t<Tile>& GetTiles(void)
+    inline vector_t<maptile_t>& GetTiles(void)
     { return tiles; }
 
-    bool AddCheckpoint(const checkpoint_t& c);
-    inline bool AddSpawn(const spawn_t& s)
-    { return AddSpawn({s[0], s[1]}, s[2], s[3]); }
+    bool AddCheckpoint(const mapcheckpoint_t& c);
+    inline bool AddSpawn(const mapspawn_t& s)
+    { return AddSpawn({s.pos[0], s.pos[1]}, s.entitytype, s.entityid); }
     bool AddSpawn(const glm::vec2& pos, uint32_t entityType, uint32_t entityId);
 private:
     bool SaveBIN(const string_t& path) const;
 
-    vector_t<Tile> tiles;
-    vector_t<checkpoint_t> checkpoints;
-    vector_t<spawn_t> spawns;
+    vector_t<maptile_t> tiles;
+    vector_t<mapcheckpoint_t> checkpoints;
+    vector_t<mapspawn_t> spawns;
 
     object_ptr_t<CTileset> cTileset;
 
