@@ -6,11 +6,49 @@
 #define MAP_IDENT (('B'<<24)+('F'<<16)+('F'<<8)+'M')
 #define MAP_VERSION 1
 
+typedef struct {
+    uint64_t fileofs;
+    uint64_t length;
+} maplump_t;
+
+#define LUMP_TILES 0
+#define LUMP_CHECKPOINTS 1
+#define LUMP_SPAWNS 2
+#define LUMP_LIGHTS 3
+#define NUMLUMPS 4
+
 typedef struct
 {
 	uint32_t ident;
 	uint32_t version;
+    maplump_t lumps[NUMLUMPS];
 } mapheader_t;
+
+static void AddLump(const void *data, uint64_t size, int lumpnum, mapheader_t *header, FILE *fp)
+{
+    maplump_t *lump;
+
+    lump = &header->lumps[lumpnum];
+
+    lump->fileofs = LittleLong(ftell(fp));
+    lump->length = LittleLong(size);
+
+    SafeWrite(data, PAD(size, sizeof(uint32_t)), fp);
+}
+
+static void CopyLump(void *data, uint64_t size, int lumpnum, mapheader_t *header)
+{
+    maplump_t *lump;
+
+    lump = &header->lumps[lumpnum];
+
+    if (lump->length % size) {
+        Error("CopyLump: bad lump size");
+    }
+    memcpy(data, (byte *), PAD(size, sizeof(uint32_t)));
+
+    return lump->length % size;
+}
 
 static void LoadCheckpoints(CMap *cMap, FILE *fp)
 {
