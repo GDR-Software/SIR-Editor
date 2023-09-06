@@ -40,10 +40,14 @@ void CTileset::GenTiles(void)
         const glm::vec2 min = { (pos.x * spriteDims.x) / sheetDims.x, (pos.y * spriteDims.y) / sheetDims.x };
         const glm::vec2 max = { ((pos.x + 1) * spriteDims.x) / sheetDims.y, ((pos.y + 1) * spriteDims.y) / sheetDims.y };
 
-        texcoords[0] = { min.x, min.y };
-        texcoords[1] = { max.x, min.y };
-        texcoords[2] = { max.x, max.y };
-        texcoords[3] = { min.x, max.y };
+        texcoords[0][0] = min.x;
+        texcoords[0][1] = min.y;
+        texcoords[1][0] = max.x;
+        texcoords[1][1] = min.y;
+        texcoords[2][0] = max.x;
+        texcoords[2][1] = max.y;
+        texcoords[3][0] = min.x;
+        texcoords[3][1] = max.y;
     };
 
     tiles.clear();
@@ -55,7 +59,9 @@ void CTileset::GenTiles(void)
         for(uint32_t x = 0; x < numTilesX; x++) {
             tile = &tiles[y * numTilesX + x];
             tile->index = y * numTilesX + x;
-            tile->pos = { x, y, 0.0f };
+
+            tile->pos[0] = x;
+            tile->pos[1] = y;
 
             genCoords({ cTexture->GetWidth(), cTexture->GetHeight() }, { tileWidth, tileHeight }, { x, y }, tile->texcoords);
         }
