@@ -44,6 +44,9 @@ void SwapMapFile(CMap *cMap)
     // tiles
     for (i = 0; i < cMap->GetTiles().size(); i++) {
         tiles[i].index = LittleInt(tiles[i].index);
+        
+        tiles[i].pos[0] = LittleInt(tiles[i].pos[0]);
+        tiles[i].pos[1] = LittleInt(tiles[i].pos[1]);
 
         tiles[i].texcoords[0][0] = LittleFloat(tiles[i].texcoords[0][0]);
         tiles[i].texcoords[0][1] = LittleFloat(tiles[i].texcoords[0][1]);

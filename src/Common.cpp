@@ -7,11 +7,11 @@
 #include "Heap.cpp"
 #endif
 
-#ifdef PATH_MAX
-#define MAX_OSPATH PATH_MAX
-#else
-#define MAX_OSPATH 256
-#endif
+int parm_saveJsonMaps;
+int parm_saveJsonTilesets;
+int parm_useInternalTilesets;
+int parm_useInternalMaps;
+
 #ifdef _WIN32
 #define PATH_SEP '\\'
 #else
@@ -182,7 +182,6 @@ const char *COM_GetExtension( const char *name )
 	else
 		return "";
 }
-
 #ifdef _WIN32
 /*
 =============
@@ -334,15 +333,18 @@ char *N_strupr(char *s1)
 }
 
 // never goes past bounds or leaves without a terminating 0
-void N_strcat(char *dest, size_t size, const char *src)
+bool N_strcat(char *dest, size_t size, const char *src)
 {
 	size_t l1;
 
 	l1 = strlen(dest);
-	if (l1 >= size)
-		Error( "N_strcat: already overflowed" );
+	if (l1 >= size) {
+		Printf( "N_strcat: already overflowed" );
+		return false;
+	}
 
 	N_strncpy( dest + l1, src, size - l1 );
+	return true;
 }
 
 char *N_stradd(char *dst, const char *src)

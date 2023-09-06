@@ -7,8 +7,7 @@ bool SaveMap(const CMap *cMap, const char *filename);
 
 CMap::CMap(void)
 {
-    name = "untitled-map.bmf";
-    path = BuildOSPath(Editor::GetPWD(), "Data/", "untitled-map.bmf");
+    name = "untitled-map";
     width = 0;
     height = 0;
 }
@@ -71,39 +70,42 @@ void CMap::Clear(void)
     spawns.clear();
     checkpoints.clear();
     tiles.clear();
-    path = BuildOSPath(Editor::GetPWD(), "Data/", "untitled-map.jmap");
     name = "untitled-map";
     cTileset = NULL;
 }
 
 bool CMap::Load(const string_t& path)
 {
-    json data;
-    char *rpath;
     const char *ext;
 
-    rpath = strdupa(path.c_str());
     ext = COM_GetExtension(path.c_str());
-    if (IsAbsolutePath(path)) {
-        rpath = BuildOSPath(Editor::GetPWD(), "Data/", path.c_str());
-    }
-    if (!ext || N_stricmp(ext, ".jmap") && N_stricmp(ext, ".bmf")) {
+    if (!ext || N_stricmp(ext, ".bmf") != 0 && N_stricmp(ext, ".jmap") != 0) {
         return false;
     }
 
-    if (!FileExists(rpath)) {
-        Printf("Map::Load: file '%s' does not exist", rpath);
+    if (!FileExists(path.c_str())) {
+        Printf("Map::Load: file '%s' does not exist", path.c_str());
         return false;
     }
 
-    Printf("Loading map file '%s'", rpath);
+    Printf("Loading map file '%s'", path.c_str());
 
-    if (!LoadMap(this, rpath)) {
-        Printf("WARNING: failed to load map file '%s'", rpath);
+    if (N_stristr(path.c_str(), ".jmap")) {
+        json data;
+        if (!Editor::LoadJSON(data, path.c_str())) {
+            Printf("WARNING: failed to load .jmap file '%s'", path.c_str());
+            return false;
+        }
+        return Load(data);
+    }
+    
+    // its a binary
+    if (!LoadMap(this, path.c_str())) {
+        Printf("WARNING: failed to load map file '%s'", path.c_str());
         return false;
     }
-    name = path;
-    this->path = rpath;
+    name = GetFilename(path.c_str());
+
     return true;
 }
 
@@ -173,26 +175,25 @@ bool CMap::Save(json& data) const
 
 bool CMap::SaveBIN(const string_t& path) const
 {
-    char *rpath;
     const char *ext;
 
     if (!modified) {
         return true; // no need to save if its already been saved
     }
 
-    rpath = strdupa(path.c_str());
     ext = COM_GetExtension(path.c_str());
-    if (IsAbsolutePath(path)) {
-        rpath = BuildOSPath(Editor::GetPWD(), "Data/", path.c_str());
+    if (!ext) {
+        ext = ".bmf";
     }
-    if (!ext || N_stricmp(ext, ".bmf")) {
+    else if (N_stricmp(ext, ".bmf") != 0) {
+        Printf("Not a binary file");
         return false;
     }
 
-    Printf("Saving map file '%s'", rpath);
+    Printf("Saving map file '%s'", path.c_str());
 
-    if (!SaveMap(this, rpath)) {
-        Printf("WARNING: failed to save map file '%s'", rpath);
+    if (!SaveMap(this, path.c_str())) {
+        Printf("WARNING: failed to save map file '%s'", path.c_str());
         return false;
     }
     return true;
@@ -200,25 +201,27 @@ bool CMap::SaveBIN(const string_t& path) const
 
 bool CMap::Save(const string_t& path) const
 {
-    char *rpath;
-    path_t tmp;
     json data;
+    const char *ext;
+    char temp[MAX_OSPATH*2+1];
+    N_strncpyz(temp, path.c_str(), sizeof(temp));
 
     if (!modified) {
         return true; // no need to save if its already been saved
     }
 
-    rpath = strdupa(path.c_str());
-    if (IsAbsolutePath(path)) {
-        rpath = BuildOSPath(Editor::GetPWD(), "Data/", path.c_str());
+    const bool saveJSON = parm_saveJsonMaps;
+    if (!N_stristr(path.c_str(), ".jmap") && saveJSON) {
+        N_strcat(temp, sizeof(temp), ".jmap");
     }
-    tmp = rpath;
-    Editor::CheckExtension(tmp, ".bmf");
+    else if (!N_stristr(path.c_str(), ".bmf") && !saveJSON) {
+        N_strcat(temp, sizeof(temp), ".bmf");
+    }
 
-    Printf("Saving map file '%s'", tmp.c_str());
+    Printf("Saving map file '%s'", temp);
 
-    if (!SaveMap(this, rpath)) {
-        Printf("WARNING: failed to save map file '%s'", rpath);
+    if (!SaveMap(this, temp)) {
+        Printf("WARNING: failed to save map file '%s'", temp);
         return false;
     }
 

@@ -254,6 +254,28 @@ bool IsAbsolutePath(const string_t& path);
 inline const char *GetAbsolutePath(const path_t& path)
 { return IsAbsolutePath(path.c_str()) ? path.c_str() : GetFilename(path.c_str()); }
 
+#ifdef PATH_MAX
+#define MAX_OSPATH PATH_MAX
+#else
+#define MAX_OSPATH 256
+#endif
+#define VA_BUF_SIZE 8192
+inline const char *va(const char *fmt, ...)
+{
+    va_list argptr;
+    static char string[2][VA_BUF_SIZE];
+    static int index = 0;
+    char *buf;
+
+    buf = string[index & 1];
+    index++;
+
+    va_start(argptr, fmt);
+    vsprintf(buf, fmt, argptr);
+    va_end(argptr);
+
+    return buf;
+}
 uint64_t LoadFile(const char *filename, void **buffer);
 void *SafeMalloc(size_t size);
 char* BuildOSPath(const path_t& curPath, const string_t& gamepath, const char *npath);
@@ -261,7 +283,7 @@ void Exit(void);
 void Error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void Printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 int GetParm(const char *parm);
-void N_strcat(char *dest, size_t size, const char *src);
+bool N_strcat(char *dest, size_t size, const char *src);
 int N_isprint(int c);
 int N_isalpha(int c);
 int N_isupper(int c);
@@ -340,5 +362,10 @@ typedef struct
 extern nkey_t keys[NUMKEYS];
 
 #define arraylen(x) (sizeof((x))/sizeof((*x)))
+
+extern int parm_saveJsonMaps;
+extern int parm_saveJsonTilesets;
+extern int parm_useInternalTilesets;
+extern int parm_useInternalMaps;
 
 #endif

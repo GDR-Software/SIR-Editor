@@ -137,11 +137,6 @@ public:
 	template<typename T>
 	inline object_ptr_t<T> GetManager(const eastl::string& name)
 	{ return dynamic_cast<T*>(managerList.at(name)); }
-
-	inline static bool UseInternalMaps(void)
-	{ return editor->useInternalMaps; }
-	inline static bool UseInternalTileset(void)
-	{ return editor->useInternalTilesets; }
 private:
 	struct FileEntry
 	{
@@ -173,9 +168,6 @@ private:
 	object_ptr_t<CTextureManager> cTextureManager;
 	
 	int editorMode;
-
-	bool useInternalMaps;
-	bool useInternalTilesets;
 	
 	static path_t curPath;
 	static object_ptr_t<Editor> editor;

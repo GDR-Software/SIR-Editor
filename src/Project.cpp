@@ -7,7 +7,6 @@
 CProject::CProject(void)
 {
     name = "untitled-project";
-    path = BuildOSPath(Editor::GetPWD(), "Data/", "untitled-project.proj");
     modified = true;
     cMap = Editor::GetMap();
     cTileset = Editor::GetTileset();
@@ -20,22 +19,61 @@ CProject::~CProject()
 bool CProject::Save(const string_t& path) const
 {
     json data;
+    char *tmp;
+    char savepath[MAX_OSPATH*2+1];
 
     if (!modified)
         return true; // sometimes it recurses
 
+    N_strncpyz(savepath, BuildOSPath(Editor::GetPWD(), "Data", path.c_str()), sizeof(savepath));
+    if (!N_stristr(savepath, ".proj")) {
+        N_strcat(savepath, sizeof(savepath), ".proj");
+    }
+
     Printf("Saving current project...");
-    Printf("Project path: %s", path.c_str());
 
     data["name"] = name;
     
-    cMap->Save(cMap->GetPath().c_str());
-    cTileset->Save(data);
-
-//    cMap->Save(data);
-//    cTileset->Save(data);
+    if (parm_useInternalMaps && parm_saveJsonMaps) {
+        cMap->Save(data["imap"]);
+    }
+    else if (parm_useInternalMaps && !parm_saveJsonMaps) {
+        Printf("-imap needs -jmap as well, saving binary map");
+        char str[MAX_GDR_PATH];
+        N_strncpyz(str, path.c_str(), sizeof(str));
+        if (!N_stristr(str, ".bmf")) {
+            if (N_stristr(str, ".jmap")) {
+                COM_StripExtension(str, str, sizeof(str));
+            }
+            N_strcat(str, sizeof(str), ".bmf");
+        }
+        tmp = BuildOSPath(Editor::GetPWD(), "Data", str);
+        cMap->Save(tmp);
+    }
+    else {
+        cMap->Save(data["emap"]);
+    }
+    if (parm_useInternalTilesets && parm_saveJsonTilesets) {
+        cTileset->Save(data["itileset"]);
+    }
+    else if (parm_useInternalMaps && !parm_saveJsonTilesets) {
+        Printf("-itileset needs -jtileset as well, saving binary map");
+        char str[MAX_GDR_PATH];
+        N_strncpyz(str, path.c_str(), sizeof(str));
+        if (!N_stristr(str, ".t2d")) {
+            if (N_stristr(str, ".jtile")) {
+                COM_StripExtension(str, str, sizeof(str));
+            }
+            N_strcat(str, ".t2d");
+        }
+        tmp = BuildOSPath(Editor::GetPWD(), "Data", str);
+        cTileset->Save(tmp);
+    }
+    else {
+        cTileset->Save(data["etileset"]);
+    }
     
-    if (!Editor::SaveJSON(data, this->path)) {
+    if (!Editor::SaveJSON(data, savepath)) {
         Error("Failed to save project!");
         return false;
     }
@@ -50,24 +88,57 @@ bool CProject::Save(const string_t& path) const
 bool CProject::Save(void) const
 {
     json data;
+    char *tmp;
+    char savepath[MAX_OSPATH*2+1];
 
     if (!modified)
         return true; // sometimes it recurses
+    
+    N_strncpyz(savepath, BuildOSPath(Editor::GetPWD(), "Data", name.c_str()), sizeof(savepath));
+    if (!N_stristr(savepath, ".proj")) {
+        N_strcat(savepath, ".proj", sizeof(savepath));
+    }
     
     Printf("Saving current project...");
 
     data["name"] = name;
 
     cMap->SetModified(true);
-    if (Editor::UseInternalMaps())
+    if (parm_useInternalMaps && parm_saveJsonMaps) {
         cMap->Save(data["imap"]);
-    else
-        cMap->Save(cMap->GetPath().c_str());
-    
-    if (Editor::UseInternalTileset())
+    }
+    else if (parm_useInternalMaps && !parm_saveJsonMaps) {
+        Printf("-imap needs -jmap as well, saving binary map");
+        char str[MAX_GDR_PATH];
+        N_strncpyz(str, path.c_str(), sizeof(str));
+        if (!N_stristr(str, ".bmf")) {
+            if (N_stristr(str, ".jmap")) {
+                COM_StripExtension(str, str, sizeof(str));
+            }
+            N_strcat(str, sizeof(str), ".bmf");
+        }
+        tmp = BuildOSPath(Editor::GetPWD(), "Data", str);
+        cMap->Save(tmp);
+    }
+    if (parm_useInternalTilesets && parm_saveJsonTilesets) {
         cTileset->Save(data["itileset"]);
-    else
-        cTileset->Save(cTileset->GetPath().c_str());
+    }
+    else if (parm_useInternalMaps && !parm_saveJsonTilesets) {
+        Printf("-itileset needs -jtileset as well, saving binary map");
+        char str[MAX_GDR_PATH];
+        N_strncpyz(str, path.c_str(), sizeof(str));
+        if (!N_stristr(str, ".t2d")) {
+            if (N_stristr(str, ".jtile")) {
+                COM_StripExtension(str, str, sizeof(str));
+            }
+            N_strcat(str, ".t2d");
+        }
+        tmp = BuildOSPath(Editor::GetPWD(), "Data", str);
+        cTileset->Save(tmp);
+    }
+    else {
+        cTileset->Save(data["etileset"]);
+    }
 
     if (!Editor::SaveJSON(data, path)) {
         Error("Failed to save project!");
@@ -84,7 +155,6 @@ bool CProject::Save(void) const
 void CProject::New(void)
 {
     name = "untitled-project";
-    path = BuildOSPath(Editor::GetPWD(), "Data/", "untitled-project.proj");
     cMap->Clear();
     cTileset->Clear();
     modified = true;
@@ -99,9 +169,9 @@ bool CProject::Load(const string_t& path)
     ext = COM_GetExtension(path.c_str());
     rpath = strdupa(path.c_str());
     if (IsAbsolutePath(path)) {
-        rpath = BuildOSPath(Editor::GetPWD(), "Data/", GetFilename(path.c_str()));
+        rpath = BuildOSPath(Editor::GetPWD(), "Data", GetFilename(path.c_str()));
     }
-    if (!ext || N_stricmp(ext, ".proj")) {
+    if (!ext || N_stricmp(ext, ".proj") != 0) {
         return false;
     }
     

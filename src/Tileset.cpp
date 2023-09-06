@@ -32,11 +32,11 @@ void CTileset::GenTiles(void)
 {
     const uint32_t numTilesX = cTexture->GetWidth() / tileWidth;
     const uint32_t numTilesY = cTexture->GetHeight() / tileHeight;
-    Tile *tile;
+    maptile_t *tile;
 
     Printf("Generating tileset...");
 
-    auto genCoords = [&](const glm::vec2& sheetDims, const glm::vec2& spriteDims, const glm::vec2& pos, glm::vec2 texcoords[4]) {
+    auto genCoords = [&](const glm::vec2& sheetDims, const glm::vec2& spriteDims, const glm::vec2& pos, float texcoords[4][2]) {
         const glm::vec2 min = { (pos.x * spriteDims.x) / sheetDims.x, (pos.y * spriteDims.y) / sheetDims.x };
         const glm::vec2 max = { ((pos.x + 1) * spriteDims.x) / sheetDims.y, ((pos.y + 1) * spriteDims.y) / sheetDims.y };
 
@@ -80,23 +80,18 @@ void CTileset::SetSheetDims(const int dims[2])
 
 bool CTileset::Save(const string_t& path) const
 {
-    char *rpath;
     const char *ext;
 
     ext = COM_GetExtension(path.c_str());
-    rpath = strdupa(path.c_str());
-    if (IsAbsolutePath(path)) {
-        rpath = BuildOSPath(Editor::GetPWD(), "Data/", GetFilename(path.c_str()));
-    }
-    if (!ext || N_stricmp(ext, ".tile") && N_stricmp(ext, ".btf")) {
+    if (!ext || N_stricmp(ext, ".jtile") != 0 && N_stricmp(ext, ".t2d") != 0) {
         return false;
     }
 
-    if (!N_stricmp(ext, ".tile")) {
-        return SaveJSON(rpath);
+    if (!N_stricmp(ext, ".jtile")) {
+        return SaveJSON(path);
     }
-    else if (!N_stricmp(ext, ".btf")) {
-        return SaveBIN(rpath);
+    else if (!N_stricmp(ext, ".t2d")) {
+        return SaveBIN(path);
     }
 
     // never reached
@@ -133,7 +128,7 @@ bool CTileset::Load(const json& data)
 bool CTileset::Load(const string_t& path)
 {
     // its not a binary
-    if (!N_stricmp(COM_GetExtension(path.c_str()), ".tile")) {
+    if (!N_stricmp(COM_GetExtension(path.c_str()), ".jtile")) {
         return LoadJSON(path);
     }
     return LoadBIN(path);
@@ -152,22 +147,17 @@ bool CTileset::SaveBIN(const string_t& path) const
 bool CTileset::LoadJSON(const string_t& path)
 {
     json data;
-    char *rpath;
     const char *ext;
 
     ext = COM_GetExtension(path.c_str());
-    rpath = strdupa(path.c_str());
-    if (IsAbsolutePath(path)) {
-        rpath = BuildOSPath(Editor::GetPWD(), "Data/", GetFilename(path.c_str()));
-    }
-    if (!ext || N_stricmp(ext, ".tile")) {
+    if (!ext || N_stricmp(ext, ".jtile") != 0) {
         return false;
     }
 
-    Printf("Loading tileset in json format: %s", rpath);
+    Printf("Loading tileset in json format: %s", path.c_str());
 
-    if (!Editor::LoadJSON(data, rpath)) {
-        Printf("Failed to load tileset %s", rpath);
+    if (!Editor::LoadJSON(data, path.c_str())) {
+        Printf("Failed to load tileset %s", path.c_str());
         return false;
     }
 
@@ -179,6 +169,8 @@ bool CTileset::LoadJSON(const string_t& path)
         return false;
     }
 
+    name = path;
+    COM_StripExtension(name.c_str(), (char *)name.data(), name.size());
     modified = true;
 
     return true;
@@ -187,19 +179,14 @@ bool CTileset::LoadJSON(const string_t& path)
 bool CTileset::SaveJSON(const string_t& path) const
 {
     json data;
-    char *rpath;
     const char *ext;
 
     ext = COM_GetExtension(path.c_str());
-    rpath = strdupa(path.c_str());
-    if (IsAbsolutePath(path)) {
-        rpath = BuildOSPath(Editor::GetPWD(), "Data/", GetFilename(path.c_str()));
-    }
-    if (!ext || N_stricmp(ext, ".tile")) {
+    if (!ext || N_stricmp(ext, ".jtile") != 0) {
         return false;
     }
 
-    Printf("Saving tileset in json format: %s", rpath);
+    Printf("Saving tileset in json format: %s", path.c_str());
 
     data["name"] = name;
     data["tilewidth"] = tileWidth;
@@ -211,8 +198,8 @@ bool CTileset::SaveJSON(const string_t& path) const
         return false;
     }
 
-    if (!Editor::SaveJSON(data, rpath)) {
-        Printf("Failed to save tileset %s", rpath);
+    if (!Editor::SaveJSON(data, path.c_str())) {
+        Printf("Failed to save tileset %s", path.c_str());
         return false;
     }
 

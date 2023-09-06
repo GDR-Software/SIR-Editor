@@ -25,7 +25,7 @@ Editor::Editor(void)
     int parm;
     const char *load;
 
-    parm = GetParm("-loglevel");
+    parm = GetParm("-debug");
     if (parm != -1)
         spdlog::set_level(spdlog::level::trace);
     else
@@ -37,9 +37,11 @@ Editor::Editor(void)
     else
         load = NULL;
     
-    useInternalMaps = GetParm("-imap") != -1;
-    useInternalTilesets = GetParm("-itileset") != -1;
-
+    parm_saveJsonMaps = GetParm("-jmap") != -1;
+    parm_saveJsonTilesets = GetParm("-jtileset") != -1;
+    parm_useInternalMaps = GetParm("-imap") != -1;
+    parm_useInternalTilesets = GetParm("-itileset") != -1;
+    
     cGUI = Allocate<GUI>();
     curPath = std::filesystem::current_path();
     ReloadFiles();
