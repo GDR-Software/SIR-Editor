@@ -64,7 +64,7 @@ bool CProject::Save(const string_t& path) const
             if (N_stristr(str, ".jtile")) {
                 COM_StripExtension(str, str, sizeof(str));
             }
-            N_strcat(str, ".t2d");
+            N_strcat(str, sizeof(str), ".t2d");
         }
         tmp = BuildOSPath(Editor::GetPWD(), "Data", str);
         cTileset->Save(tmp);
@@ -96,7 +96,7 @@ bool CProject::Save(void) const
     
     N_strncpyz(savepath, BuildOSPath(Editor::GetPWD(), "Data", name.c_str()), sizeof(savepath));
     if (!N_stristr(savepath, ".proj")) {
-        N_strcat(savepath, ".proj", sizeof(savepath));
+        N_strcat(savepath, sizeof(savepath), ".proj");
     }
     
     Printf("Saving current project...");
@@ -110,7 +110,7 @@ bool CProject::Save(void) const
     else if (parm_useInternalMaps && !parm_saveJsonMaps) {
         Printf("-imap needs -jmap as well, saving binary map");
         char str[MAX_GDR_PATH];
-        N_strncpyz(str, path.c_str(), sizeof(str));
+        N_strncpyz(str, cMap->GetName().c_str(), sizeof(str));
         if (!N_stristr(str, ".bmf")) {
             if (N_stristr(str, ".jmap")) {
                 COM_StripExtension(str, str, sizeof(str));
@@ -126,12 +126,12 @@ bool CProject::Save(void) const
     else if (parm_useInternalMaps && !parm_saveJsonTilesets) {
         Printf("-itileset needs -jtileset as well, saving binary map");
         char str[MAX_GDR_PATH];
-        N_strncpyz(str, path.c_str(), sizeof(str));
+        N_strncpyz(str, cTileset->GetName().c_str(), sizeof(str));
         if (!N_stristr(str, ".t2d")) {
             if (N_stristr(str, ".jtile")) {
                 COM_StripExtension(str, str, sizeof(str));
             }
-            N_strcat(str, ".t2d");
+            N_strcat(str, sizeof(str), ".t2d");
         }
         tmp = BuildOSPath(Editor::GetPWD(), "Data", str);
         cTileset->Save(tmp);
@@ -140,7 +140,7 @@ bool CProject::Save(void) const
         cTileset->Save(data["etileset"]);
     }
 
-    if (!Editor::SaveJSON(data, path)) {
+    if (!Editor::SaveJSON(data, savepath)) {
         Error("Failed to save project!");
         return false;
     }
@@ -163,19 +163,16 @@ void CProject::New(void)
 bool CProject::Load(const string_t& path)
 {
     json data;
-    char *rpath;
     const char *ext;
+    char savepath[MAX_OSPATH*2+1];
 
     ext = COM_GetExtension(path.c_str());
-    rpath = strdupa(path.c_str());
-    if (IsAbsolutePath(path)) {
-        rpath = BuildOSPath(Editor::GetPWD(), "Data", GetFilename(path.c_str()));
-    }
+    N_strncpyz(savepath, BuildOSPath(Editor::GetPWD(), "Data", path.c_str()), sizeof(savepath));
     if (!ext || N_stricmp(ext, ".proj") != 0) {
         return false;
     }
     
-    if (!Editor::LoadJSON(data, rpath)) {
+    if (!Editor::LoadJSON(data, savepath)) {
         Error("Failed to load project!");
         return false;
     }

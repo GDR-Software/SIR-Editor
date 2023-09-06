@@ -17,6 +17,10 @@ public:
     { return true; }
     virtual inline bool HasOpenRecent(void) const override
     { return true; }
+    virtual inline const char *GetWizardName(void) const override
+    { return "Map"; }
+    virtual inline const char *GetManagerName(void) const override
+    { return "Map Manager"; }
 
     IMPL_EDITOR_MANAGER(CMapManager, CMap)
     IMPL_SINGLETON(CMapManager, CMap)

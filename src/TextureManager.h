@@ -16,7 +16,11 @@ public:
     virtual inline bool HasWizard(void) const override
     { return true; }
     virtual inline bool HasOpenRecent(void) const override
-    { return false; }
+    { return true; }
+    virtual inline const char *GetWizardName(void) const override
+    { return "Texture"; }
+    virtual inline const char *GetManagerName(void) const override
+    { return "Texture Manager"; }
 
     IMPL_EDITOR_MANAGER(CTextureManager, CTexture)
 };

@@ -13,6 +13,10 @@ public:
     { return true; }
     virtual inline bool HasOpenRecent(void) const override
     { return true; }
+    virtual inline const char *GetWizardName(void) const override
+    { return "Tileset"; }
+    virtual inline const char *GetManagerName(void) const override
+    { return "Tileset Manager"; }
 
     virtual void DrawWizard(const string_t& menuTitle = "Tileset Wizard") override;
     virtual void DrawWizard(void) override

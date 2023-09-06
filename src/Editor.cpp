@@ -301,23 +301,10 @@ void Editor::RecursiveDirectoryIterator(const path_t& path, vector_t<FileEntry>&
         entry.path = it.path();
 
         if (it.is_directory()) {
-            depth++;
-            printf("|");
-            for (uint32_t i= 0; i < depth; i++) {
-                printf("-");
-            }
-            printf(" %s/\n", GetAbsolutePath(it.path()));
-
             entry.isDirectory = true;
             RecursiveDirectoryIterator(it.path(), entry.DirList, depth);
         }
         else if (!it.is_directory()) {
-            printf("|");
-            for (uint32_t i= 0; i < depth; i++) {
-                printf("-");
-            }
-            printf(" %s\n", GetAbsolutePath(it.path()));
-
             entry.isDirectory = false;
         }
     }
@@ -413,11 +400,18 @@ void Editor::DrawFileMenu(void)
 
 void Editor::DrawWizardMenu(void)
 {
-    for (const auto& it : managerList) {
-        if (it.second->HasWizard()) {
-            it.second->DrawWizard("Wizard");
+    char wizardname[MAX_GDR_PATH];
+
+    ImGui::Begin("Wizard");
+    if (ImGui::BeginMenuBar()) {
+        for (const auto& it : managerList) {
+            if (it.second->HasWizard()) {
+                N_strncpyz(wizardname, va("%s Wizard", it.second->GetWizardName()), sizeof(wizardname));
+                it.second->DrawWizard(wizardname);
+            }
         }
     }
+    ImGui::End();
 }
 
 void Editor::Redo(void)
@@ -443,9 +437,8 @@ void Editor::DrawWidgets(void)
             DrawEditMenu();
             ImGui::EndMenu();
         }
-        if (ImGui::BeginMenu("Wizard")) {
+        if (ImGui::MenuItem("Wizard")) {
             DrawWizardMenu();
-            ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
     }

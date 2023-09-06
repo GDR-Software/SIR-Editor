@@ -24,11 +24,7 @@ GUI::GUI(void)
 
 GUI::~GUI()
 {
-#ifdef USE_ZONE
-    Z_Free(vertices);
-#else
-    Mem_Free(vertices);
-#endif
+    Free(vertices);
 
     ImGui_ImplSDL2_Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
@@ -426,6 +422,16 @@ void GUI::DrawMap(const CMap *cMap)
     glUseProgram(0);
 }
 
+static void *ImGui_MemAlloc(size_t size, void *)
+{
+    return Malloc(size);
+}
+
+static void ImGui_MemFree(void *ptr, void *)
+{
+    Free(ptr);
+}
+
 void GUI::Init(const char *windowName, int width, int height)
 {
     if (SDL_Init(SDL_INIT_EVENTS | SDL_INIT_VIDEO) < 0) {
@@ -455,15 +461,14 @@ void GUI::Init(const char *windowName, int width, int height)
         Error("Failed to init GLAD");
     }
     
-#ifdef USE_ZONE
-    vertices = (Vertex *)Z_Malloc(sizeof(*vertices) * NUM_VERTICES, TAG_RENDERER, &vertices, "GLvertices");
-#else
-    vertices = (Vertex *)Mem_Alloc(sizeof(*vertices) * NUM_VERTICES);
-#endif
+    vertices = (Vertex *)Malloc(sizeof(*vertices) * NUM_VERTICES);
     InitGLObjects();
     ResetMouse();
 
     IMGUI_CHECKVERSION();
+    
+    ImGui::SetAllocatorFunctions(ImGui_MemAlloc, ImGui_MemFree);
+
     ImGui::CreateContext();
 
     ImGui_ImplSDL2_InitForOpenGL(window, context);
@@ -472,7 +477,6 @@ void GUI::Init(const char *windowName, int width, int height)
     ImGui_ImplOpenGL3_CreateFontsTexture();
 
     Printf("ImGui initialized");
-
     Printf("OpenGL initialization done");
 
     consoleActive = false;

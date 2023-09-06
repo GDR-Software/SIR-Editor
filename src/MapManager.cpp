@@ -17,7 +17,7 @@ bool CMapManager::LoadList(void)
 {
     vector_t<path_t> fileList;
 
-    Editor::ListFiles(fileList, "Data/", {".map", ".jmap"});
+    Editor::ListFiles(fileList, "Data/", {".bmf", ".jmap"});
 
     curTool = Editor::GetMap();
 
@@ -55,14 +55,55 @@ void CMapManager::DrawRecent(void)
     }
 }
 
+#define MODE_INVALID -1
+#define MODE_CREATE_MAP 0
+#define MODE_UPDATE_MAP 1
+
 typedef struct
 {
     char name[1024];
     IMPL_WIZARD_DIMS(dims, width, height)
+    int numCheckpoints;
+    int numSpawns;
+    int mode;
 
     bool entered = false;
 } wizard_t;
 static wizard_t wizard;
+
+static void DrawCreateMap(void)
+{
+    if (wizard.mode != MODE_CREATE_MAP) {
+        return;
+    }
+
+    if (ImGui::Begin("Create Map")) {
+        ImGui::InputText("Map Name", wizard.name, sizeof(wizard.name));
+        ImGui::InputInt("Width", &wizard.width);
+        ImGui::InputInt("Height", &wizard.height);
+        ImGui::InputInt("# of Checkpoints", &wizard.numCheckpoints);
+        ImGui::InputInt("# of Spawns", &wizard.numSpawns);
+
+        if (ImGui::Button("Done")) {
+            wizard.entered = false;
+            curTool->Clear();
+            curTool->Resize(wizard.dims);
+            curTool->SetName(wizard.name);
+            curTool->GetCheckpoints().resize(numCheckpoints);
+            curTool->GetSpawns().resize(numSpawns);
+
+            toolList.try_emplace(wizard.name, Allocate<CMap>());
+            memset(&wizard, 0, sizeof(wizard));
+
+            wizard.mode = MODE_INVALID;
+        }
+        
+        ImGui::End();
+    }
+    else {
+        memset(&wizard, 0, sizeof(wizard));
+    }
+}
 
 void CMapManager::DrawWizard(const string_t& menuTitle)
 {
@@ -70,19 +111,41 @@ void CMapManager::DrawWizard(const string_t& menuTitle)
         memset(&wizard, 0, sizeof(wizard));
         wizard.entered = true;
     }
+    
+    if (menuTitle == "Create Map") {
+        wizard.mode = MODE_CREATE_MAP;
+        DrawCreateMap();
+        return;
+    }
+
+    wizard.width = curTool->GetWidth();
+    wizard.height = curTool->GetHeight();
+    wizard.numCheckpoints = curTool->GetCheckpoints().size();
+    wizard.numSpawns = curTool->GetSpawns().size();
 
     if (ImGui::BeginMenu(menuTitle.c_str())) {
-        ImGui::InputText("Map Name", wizard.name, sizeof(wizard.name));
         ImGui::InputInt("Width", &wizard.width);
         ImGui::InputInt("Height", &wizard.height);
+        
         if (ImGui::Button("Done")) {
-            wizard.entered = false;
-            curTool->Clear();
-            curTool->Resize(wizard.dims);
-            curTool->SetName(wizard.name);
-
-            toolList.try_emplace(wizard.name, Allocate<CMap>());
-            memset(&wizard, 0, sizeof(wizard));
+            bool modified = false;
+            if (wizard.width != curTool->GetWidth() || wizard.height != curTool->GetHeight()) {
+                curTool->Resize(wizard.dims);
+                modified = true;
+            }
+            if (curTool->GetName() != wizard.name) {
+                curTool->SetName(wizard.name);
+                modified = true;
+            }
+            if (wizard.numCheckpoints != curTool->GetCheckpoints().size()) {
+                curTool->GetCheckpoints().resize(wizard.numCheckpoints);
+                modified = true;
+            }
+            if (wizard.numSpawns != curTool->GetSpawns().size()) {
+                curTool->GetSpawns().resize(wizard.numSpawns);
+                modified = true;
+            }
+            curTool->SetModified(modified);
         }
         ImGui::EndMenu();
     }

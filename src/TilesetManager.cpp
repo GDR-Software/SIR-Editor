@@ -17,7 +17,7 @@ bool CTilesetManager::LoadList(void)
 {
     vector_t<path_t> fileList;
 
-    Editor::ListFiles(fileList, "Data/", {".tile"});
+    Editor::ListFiles(fileList, "Data/", {".jtile", ".t2d"});
 
     curTool = Editor::GetTileset();
 
@@ -74,7 +74,7 @@ void DrawTextureWizard(void)
             wizard.texturePtr = NULL;
         }
     }
-    else if (Editor::GetTextureManager()->GetListSize()) {
+    else if (Editor::GetTextureManager()->GetListSize() && Editor::GetTextureManager()->HasOpenRecent()) {
         for (const auto& it : Editor::GetTextureManager()->GetList()) {
             if (ImGui::MenuItem(it.first.c_str())) {
                 wizard.texturePtr = it.first.c_str();
@@ -97,7 +97,7 @@ void CTilesetManager::DrawWizard(const string_t& menuTitle)
 
         DrawTextureWizard();
         
-        if (ImGui::Button("Done")) {
+        if (ImGui::Button("Create Tileset")) {
             wizard.entered = false;
             curTool->SetTileDims(wizard.spriteDims);
             curTool->SetSheetDims(wizard.sheetDims);

@@ -13,6 +13,10 @@ public:
     { return true; }
     virtual inline bool HasOpenRecent(void) const override
     { return true; }
+    virtual inline const char *GetWizardName(void) const override
+    { return "Project"; }
+    virtual inline const char *GetManagerName(void) const override
+    { return "Project Manager"; }
 
     inline void SetCurrentAssetDir(const std::filesystem::path& dir)
     { curTool->SetAssetDirectory(dir); }

@@ -20,6 +20,8 @@ public:
 
     virtual bool HasWizard(void) const = 0;
     virtual bool HasOpenRecent(void) const = 0;
+    virtual const char *GetManagerName(void) const = 0;
+    virtual const char *GetWizardName(void) const = 0;
 };
 
 #define IMPL_EDITOR_MANAGER(manager,tool) \
