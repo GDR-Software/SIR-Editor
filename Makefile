@@ -39,7 +39,7 @@ $(O)/%.o: Dependencies/src/%.cpp
 	$(COMPILE)
 
 $(EXE): $(OBJS) $(DEPS)
-	$(CC) $(CFLAGS) $(OBJS) $(DEPS) -o $(EXE) -lGL -lSDL2 /usr/local/lib/libspdlog.a /usr/local/lib/libfoonathan_memory-0.7.3.a libEASTL.a
+	$(CC) $(CFLAGS) $(OBJS) $(DEPS) -o $(EXE) -lGL -lSDL2 /usr/local/lib/libspdlog.a /usr/local/lib/libfoonathan_memory-0.7.3.a libEASTL.a -lbacktrace
 
 clean:
 	rm $(O)/*

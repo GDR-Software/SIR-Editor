@@ -75,7 +75,7 @@ static void DrawMap(void)
         if (!N_stricmp(wizard.mapPtr, "untitled-map")) {
             wizard.mapPtr = NULL;
         }
-        ImGui::MenuItem(wizard.mapPtr);
+        ImGui::Text("Current Map: %s", wizard.mapPtr);
         if (ImGui::Button("Clear Map")) {
             wizard.mapPtr = NULL;
         }
@@ -107,7 +107,7 @@ static void DrawTileset(void)
         if (!N_stricmp(wizard.tilesetPtr, "untitled-tileset")) {
             wizard.tilesetPtr = NULL;
         }
-        ImGui::MenuItem(wizard.tilesetPtr);
+        ImGui::Text("Current Tileset: %s", wizard.tilesetPtr);
         if (ImGui::Button("Clear Tileset")) {
             wizard.tilesetPtr = NULL;
         }
@@ -135,6 +135,9 @@ static void DrawTileset(void)
 
 static void DrawCreateProject(void)
 {
+    CProject *curTool = Editor::GetProjManager()->GetCurrent();
+    string_hash_t<object_ptr_t<CProject>>& toolList = Editor::GetProjManager()->GetList();
+
     if (ImGui::Begin("Create Project")) {
         ImGui::InputText("Project Name", wizard.name, sizeof(wizard.name));
         DrawMap();
@@ -163,7 +166,7 @@ static void DrawModifyMap(void)
         if (!N_stricmp(wizard.mapPtr, "untitled-map")) {
             wizard.mapPtr = NULL;
         }
-        ImGui::Text(wizard.mapPtr);
+        ImGui::Text("%s", wizard.mapPtr);
         if (ImGui::Button("Clear Map")) {
             wizard.mapPtr = NULL;
         }
@@ -179,7 +182,7 @@ void CProjectManager::DrawWizard(const string_t& menuTitle)
         wizard.entered = true;
     }
 
-    if (menuTitle == "Create Project") {
+    if (menuTitle == "Create Project" || !N_stricmp(curTool->GetName().c_str(), "untitled-project")) {
         DrawCreateProject();
         return;
     }
@@ -189,7 +192,7 @@ void CProjectManager::DrawWizard(const string_t& menuTitle)
     if (ImGui::BeginMenu(menuTitle.c_str())) {
         ImGui::InputText("Project Name", wizard.name, sizeof(wizard.name));
         DrawModifyMap();
-        if (ImGui::Button("Create Project")) {
+        if (ImGui::Button("Update Project")) {
             wizard.entered = false;
             curTool->SetName(wizard.name);
             curTool->SetModified(true);

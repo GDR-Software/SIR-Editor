@@ -77,6 +77,9 @@ static void DrawCreateMap(void)
         return;
     }
 
+    CMap *curTool = Editor::GetMapManager()->GetCurrent();
+    string_hash_t<object_ptr_t<CMap>>& toolList = Editor::GetMapManager()->GetList();
+
     if (ImGui::Begin("Create Map")) {
         ImGui::InputText("Map Name", wizard.name, sizeof(wizard.name));
         ImGui::InputInt("Width", &wizard.width);
@@ -89,8 +92,8 @@ static void DrawCreateMap(void)
             curTool->Clear();
             curTool->Resize(wizard.dims);
             curTool->SetName(wizard.name);
-            curTool->GetCheckpoints().resize(numCheckpoints);
-            curTool->GetSpawns().resize(numSpawns);
+            curTool->GetCheckpoints().resize(wizard.numCheckpoints);
+            curTool->GetSpawns().resize(wizard.numSpawns);
 
             toolList.try_emplace(wizard.name, Allocate<CMap>());
             memset(&wizard, 0, sizeof(wizard));

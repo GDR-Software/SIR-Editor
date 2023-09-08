@@ -46,11 +46,18 @@ private:
 #define EDITOR_WIDGET 0x2000
 #define EDITOR_CTRL   0x4000
 #define EDITOR_MOVE   0x8000
+#define EDITOR_WIZARD 0x0200
 
 #define ENTITY_MOB    0x0000
 #define ENTITY_PLAYR  0x2000
 #define ENTITY_ITEM   0x4000
 #define ENTITY_WEAPON 0x8000
+
+struct Popup
+{
+	const char *title;
+	string_t message;
+};
 
 class Editor
 {
@@ -91,6 +98,7 @@ public:
     void Redo(void);
     void Undo(void);
 
+	void DrawPopups(void);
     void DrawWidgets(void);
     void PollCommands(void);
 	void run(void);
@@ -125,6 +133,9 @@ public:
 	inline static const std::filesystem::path& GetPWD(void)
 	{ return curPath; }
 	static bool IsAllocated(void);
+
+	static inline void PushPopup(const Popup& p)
+	{ editor->popups.emplace_back(p); }
 
 	template<typename T>
 	inline object_ptr_t<T> AddManager(const eastl::string& name)
@@ -166,6 +177,9 @@ private:
 	object_ptr_t<CTilesetManager> cTilesetManager;
 	object_ptr_t<CMapManager> cMapManager;
 	object_ptr_t<CTextureManager> cTextureManager;
+
+	vector_t<Popup> popups;
+	Popup *curPopup;
 	
 	int editorMode;
 	

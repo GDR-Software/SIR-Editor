@@ -11,6 +11,7 @@
 #include <vector>
 #include <memory>
 #include <fstream>
+#include <EASTL/queue.h>
 #include <EASTL/unique_ptr.h>
 #include <EASTL/shared_ptr.h>
 #include <EASTL/array.h>

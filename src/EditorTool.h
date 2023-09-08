@@ -22,6 +22,8 @@ public:
     virtual void Clear(void)
     { Error("CEditorTool::%s: called directly", __func__); }
 
+    virtual inline void ClearName(void)
+    { name.clear(); }
     virtual inline void SetName(const string_t& _name)
     { name = _name; }
     virtual inline void SetModified(bool _modified)
