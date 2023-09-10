@@ -56,7 +56,12 @@ private:
 struct Popup
 {
 	const char *title;
-	string_t message;
+	const char *message;
+	const char *confirmation;
+	bool *yesno;
+
+	inline constexpr Popup(const char *_title, const char *msg, const char *_confirmation, bool *_yesno)
+		: title{_title}, message{msg}, confirmation{_confirmation}, yesno{_yesno} {}
 };
 
 class Editor
@@ -185,6 +190,11 @@ private:
 	
 	static path_t curPath;
 	static object_ptr_t<Editor> editor;
+};
+
+struct EditorPreferences
+{
+
 };
 
 #endif

@@ -6,11 +6,17 @@
 #else
 #include "Heap.cpp"
 #endif
+#include <bzlib.h>
+#include <zlib.h>
+
+#include <backtrace.h>
+#include <cxxabi.h> // for demangling C++ symbols
 
 int parm_saveJsonMaps;
 int parm_saveJsonTilesets;
 int parm_useInternalTilesets;
 int parm_useInternalMaps;
+int parm_compression;
 
 #ifdef _WIN32
 #define PATH_SEP '\\'
@@ -20,6 +26,93 @@ int parm_useInternalMaps;
 
 int myargc;
 char **myargv;
+
+
+static struct backtrace_state *bt_state = NULL;
+
+static void bt_error_callback( void *data, const char *msg, int errnum )
+{
+    Error("libbacktrace ERROR: %d - %s", errnum, msg);
+}
+
+static void bt_syminfo_callback( void *data, uintptr_t pc, const char *symname,
+								 uintptr_t symval, uintptr_t symsize )
+{
+	if (symname != NULL) {
+		int status;
+		// FIXME: sucks that __cxa_demangle() insists on using malloc().. but so does printf()
+		char* name = abi::__cxa_demangle(symname, NULL, NULL, &status);
+		if (name != NULL) {
+			symname = name;
+		}
+		Printf("  %zu %s", pc, symname);
+		free(name);
+	} else {
+        Printf("  %zu (unknown symbol)", pc);
+	}
+}
+
+static int bt_pcinfo_callback( void *data, uintptr_t pc, const char *filename, int lineno, const char *function )
+{
+	if (data != NULL) {
+		int* hadInfo = (int*)data;
+		*hadInfo = (function != NULL);
+	}
+
+	if (function != NULL) {
+		int status;
+		// FIXME: sucks that __cxa_demangle() insists on using malloc()..
+		char* name = abi::__cxa_demangle(function, NULL, NULL, &status);
+		if (name != NULL) {
+			function = name;
+		}
+
+		const char* fileNameNeo = strstr(filename, "/neo/");
+		if (fileNameNeo != NULL) {
+			filename = fileNameNeo+1; // I want "neo/bla/blub.cpp:42"
+		}
+        Printf("  %zu %s:%d %s", pc, filename, lineno, function);
+		free(name);
+	}
+
+	return 0;
+}
+
+static void bt_error_dummy( void *data, const char *msg, int errnum )
+{
+	//CrashPrintf("ERROR-DUMMY: %d - %s\n", errnum, msg);
+}
+
+static int bt_simple_callback(void *data, uintptr_t pc)
+{
+	int pcInfoWorked = 0;
+	// if this fails, the executable doesn't have debug info, that's ok (=> use bt_error_dummy())
+	backtrace_pcinfo(bt_state, pc, bt_pcinfo_callback, bt_error_dummy, &pcInfoWorked);
+	if (!pcInfoWorked) { // no debug info? use normal symbols instead
+		// yes, it would be easier to call backtrace_syminfo() in bt_pcinfo_callback() if function == NULL,
+		// but some libbacktrace versions (e.g. in Ubuntu 18.04's g++-7) don't call bt_pcinfo_callback
+		// at all if no debug info was available - which is also the reason backtrace_full() can't be used..
+		backtrace_syminfo(bt_state, pc, bt_syminfo_callback, bt_error_callback, NULL);
+	}
+
+	return 0;
+}
+
+
+static void do_backtrace(void)
+{
+    // can't use idStr here and thus can't use Sys_GetPath(PATH_EXE) => added Posix_GetExePath()
+	const char* exePath = "mapeditor";
+	bt_state = backtrace_create_state(exePath[0] ? exePath : NULL, 0, bt_error_callback, NULL);
+
+    if (bt_state != NULL) {
+		int skip = 1; // skip this function in backtrace
+		backtrace_simple(bt_state, skip, bt_simple_callback, bt_error_callback, NULL);
+	} else {
+        Error("(No backtrace because libbacktrace state is NULL)");
+	}
+}
+
 
 void* operator new[](size_t size, size_t alignment, size_t alignmentOffset, const char* pName, int flags, unsigned debugFlags, const char* file, int line)
 {
@@ -115,6 +208,8 @@ void Error(const char *fmt, ...)
     vsnprintf(buffer, sizeof(buffer), fmt, argptr);
     va_end(argptr);
 
+	do_backtrace();
+
 	GUI::Print("ERROR: %s", buffer);
 	GUI::Print("Exiting app (code : -1)");
 	
@@ -135,6 +230,225 @@ void Printf(const char *fmt, ...)
 
     spdlog::info("{}", buffer);
 	GUI::Print("%s", buffer);
+}
+
+static inline const char *bzip2_strerror(int err)
+{
+	switch (err) {
+	case BZ_DATA_ERROR: return "(BZ_DATA_ERROR) buffer provided to bzip2 was corrupted";
+	case BZ_MEM_ERROR: return "(BZ_MEM_ERROR) memory allocation request made by bzip2 failed";
+	case BZ_DATA_ERROR_MAGIC: return "(BZ_DATA_ERROR_MAGIC) buffer was not compressed with bzip2, it did not contain \"BZA\"";
+	case BZ_IO_ERROR: return va("(BZ_IO_ERROR) failure to read or write, file I/O error");
+	case BZ_UNEXPECTED_EOF: return "(BZ_UNEXPECTED_EOF) unexpected end of data stream";
+	case BZ_OUTBUFF_FULL: return "(BZ_OUTBUFF_FULL) buffer overflow";
+	case BZ_SEQUENCE_ERROR: return "(BZ_SEQUENCE_ERROR) bad function call error, please report this bug";
+	case BZ_OK:
+		break;
+	};
+	return "No Error... How?";
+}
+
+static inline void CheckBZIP2(int errcode, uint64_t buflen, const char *action)
+{
+	switch (errcode) {
+	case BZ_OK:
+	case BZ_RUN_OK:
+	case BZ_FLUSH_OK:
+	case BZ_FINISH_OK:
+	case BZ_STREAM_END:
+		return; // all good
+	case BZ_CONFIG_ERROR:
+	case BZ_DATA_ERROR:
+	case BZ_DATA_ERROR_MAGIC:
+	case BZ_IO_ERROR:
+	case BZ_MEM_ERROR:
+	case BZ_PARAM_ERROR:
+	case BZ_SEQUENCE_ERROR:
+	case BZ_OUTBUFF_FULL:
+	case BZ_UNEXPECTED_EOF:
+		Error("Failure on %s of %lu bytes. BZIP2 error reason:\n\t%s", action, buflen, bzip2_strerror(errcode));
+		break;
+	};
+}
+
+static char *Compress_BZIP2(void *buf, uint64_t buflen, uint64_t *outlen)
+{
+	char *out, *newbuf;
+	unsigned int len;
+	int ret;
+
+	Printf("Compressing %lu bytes with bzip2...", buflen);
+
+	len = buflen;
+	out = (char *)Malloc(buflen);
+	ret = BZ2_bzBuffToBuffCompress(out, &len, (char *)buf, buflen, 9, 4, 50);
+	CheckBZIP2(ret, buflen, "compression");
+
+	Printf("Successful compression of %lu to %u bytes with zlib", buflen, len);
+	newbuf = (char *)Malloc(len);
+	memcpy(newbuf, out, len);
+	Free(out);
+	*outlen = len;
+
+	return newbuf;
+}
+
+static inline const char *zlib_strerror(int err)
+{
+	switch (err) {
+	case Z_DATA_ERROR: return "(Z_DATA_ERROR) buffer provided to zlib was corrupted";
+	case Z_BUF_ERROR: return "(Z_BUF_ERROR) buffer overflow";
+	case Z_STREAM_ERROR: return "(Z_STREAM_ERROR) bad params passed to zlib, please report this bug";
+	case Z_MEM_ERROR: return "(Z_MEM_ERROR) memory allocation request made by zlib failed";
+	case Z_OK:
+		break;
+	};
+	return "No Error... How?";
+}
+
+static void *zalloc(voidpf opaque, uInt items, uInt size)
+{
+	(void)opaque;
+	(void)items;
+	return Malloc(size);
+}
+
+static void zfree(voidpf opaque, voidpf address)
+{
+	(void)opaque;
+	Free((void *)address);
+}
+
+static char *Compress_ZLIB(void *buf, uint64_t buflen, uint64_t *outlen)
+{
+	char *out, *newbuf;
+	const uint64_t expectedLen = buflen / 2;
+	int ret;
+
+	out = (char *)Malloc(buflen);
+
+#if 0
+	stream.zalloc = zalloc;
+	stream.zfree = zfree;
+	stream.opaque = Z_NULL;
+	stream.next_in = (Bytef *)buf;
+	stream.avail_in = buflen;
+	stream.next_out = (Bytef *)out;
+	stream.avail_out = buflen;
+
+	ret = deflateInit2(&stream, Z_BEST_COMPRESSION, Z_DEFLATED, 15, 9, );
+	if (ret != Z_OK) {
+		Error("Failed to compress buffer of %lu bytes (inflateInit2)", buflen);
+		return NULL;
+	}
+	inflate
+
+	do {
+		ret = inflate(&stream, Z_SYNC_FLUSH);
+
+		switch (ret) {
+		case Z_NEED_DICT:
+		case Z_STREAM_ERROR:
+			ret = Z_DATA_ERROR;
+			break;
+		case Z_DATA_ERRO:
+		case Z_MEM_ERROR:
+			inflateEnd(&stream);
+			Error("Failed to compress buffer of %lu bytes (inflate)", buflen);
+			return NULL;
+		};
+		
+		if (ret != Z_STREAM_END) {
+			newbuf = (char *)Malloc(buflen * 2);
+			memcpy(newbuf, out, buflen * 2);
+			Free(out);
+			out = newbuf;
+
+			stream.next_out = (Bytef *)(out + buflen);
+			stream.avail_out = buflen;
+			buflen *= 2;
+		}
+	} while (ret != Z_STREAM_END);
+#endif
+	Printf("Compressing %lu bytes with zlib", buflen);
+
+	ret = compress2((Bytef *)out, (uLongf *)outlen, (const Bytef *)buf, buflen, Z_BEST_COMPRESSION);
+	if (ret != Z_OK)
+		Error("Failure on compression of %lu bytes. ZLIB error reason:\n\t%s", buflen, zError(ret));
+	
+	Printf("Successful compression of %lu to %lu bytes with zlib", buflen, *outlen);
+	newbuf = (char *)Malloc(*outlen);
+	memcpy(newbuf, out, *outlen);
+	Free(out);
+
+	return newbuf;
+}
+
+char *Compress(void *buf, uint64_t buflen, uint64_t *outlen, int compression)
+{
+	switch (compression) {
+	case COMPRESS_BZIP2:
+		return Compress_BZIP2(buf, buflen, outlen);
+	case COMPRESS_ZLIB:
+		return Compress_ZLIB(buf, buflen, outlen);
+	default:
+		break;
+	};
+	return (char *)buf;
+}
+
+static char *Decompress_BZIP2(void *buf, uint64_t buflen, uint64_t *outlen)
+{
+	char *out, *newbuf;
+	unsigned int len;
+	int ret;
+
+	Printf("Decompressing %lu bytes with bzip2", buflen);
+	len = buflen * 2;
+	out = (char *)Malloc(buflen * 2);
+	ret = BZ2_bzBuffToBuffDecompress(out, &len, (char *)buf, buflen, 0, 4);
+	CheckBZIP2(ret, buflen, "decompression");
+
+	Printf("Successful decompression of %lu to %u bytes with bzip2", buflen, len);
+	newbuf = (char *)Malloc(len);
+	memcpy(newbuf, out, len);
+	Free(out);
+	*outlen = len;
+
+	return newbuf;
+}
+
+static char *Decompress_ZLIB(void *buf, uint64_t buflen, uint64_t *outlen)
+{
+	char *out, *newbuf;
+	int ret;
+
+	Printf("Decompressing %lu bytes with zlib...", buflen);
+	out = (char *)Malloc(buflen * 2);
+	*outlen = buflen * 2;
+	ret = uncompress((Bytef *)out, outlen, (const Bytef *)buf, buflen);
+	if (ret != Z_OK)
+		Error("Failure on decompression of %lu bytes. ZLIB error reason:\n\t:%s", buflen * 2, zError(ret));
+	
+	Printf("Successful decompression of %lu bytes to %lu bytes with zlib", buflen, *outlen);
+	newbuf = (char *)Malloc(*outlen);
+	memcpy(newbuf, out, *outlen);
+	Free(out);
+
+	return newbuf;
+}
+
+char *Decompress(void *buf, uint64_t buflen, uint64_t *outlen, int compression)
+{
+	switch (compression) {
+	case COMPRESS_BZIP2:
+		return Decompress_BZIP2(buf, buflen, outlen);
+	case COMPRESS_ZLIB:
+		return Decompress_ZLIB(buf, buflen, outlen);
+	default:
+		break;
+	};
+	return (char *)buf;
 }
 
 bool IsAbsolutePath(const string_t& path)
@@ -160,6 +474,24 @@ const char *GetFilename(const char *path)
 	dir = strrchr(path, PATH_SEP);
 	return dir ? dir + 1 : path;
 }
+
+/*
+==================
+COM_DefaultExtension
+
+if path doesn't have an extension, then append
+ the specified one (which should include the .)
+==================
+*/
+void COM_DefaultExtension( char *path, uint64_t maxSize, const char *extension )
+{
+	const char *dot = strrchr(path, '.'), *slash;
+	if (dot && ((slash = strrchr(path, '/')) == NULL || slash < dot))
+		return;
+	else
+		N_strcat(path, maxSize, extension);
+}
+
 
 void COM_StripExtension(const char *in, char *out, uint64_t destsize)
 {
@@ -707,6 +1039,72 @@ uint64_t FileLength(FILE *fp)
     fseek(fp, pos, SEEK_SET);
 
     return end;
+}
+
+const char *FilterToString(uint32_t filter)
+{
+    switch (filter) {
+    case GL_LINEAR: return "GL_LINEAR";
+    case GL_NEAREST: return "GL_NEAREST";
+    };
+
+	// None
+    return "None";
+}
+
+uint32_t StrToFilter(const char *str)
+{
+    if (!N_stricmp(str, "GL_LINEAR")) return GL_LINEAR;
+    else if (!N_stricmp(str, "GL_NEAREST")) return GL_NEAREST;
+
+	// None
+    return 0;
+}
+
+const char *WrapToString(uint32_t wrap)
+{
+    switch (wrap) {
+    case GL_REPEAT: return "GL_REPEAT";
+    case GL_CLAMP_TO_EDGE: return "GL_CLAMP_TO_EDGE";
+    case GL_CLAMP_TO_BORDER: return "GL_CLAMP_TO_BORDER";
+    case GL_MIRRORED_REPEAT: return "GL_MIRRORED_REPEAT";
+    };
+
+	// None
+    return "None";
+}
+
+uint32_t StrToWrap(const char *str)
+{
+    if (!N_stricmp(str, "GL_REPEAT")) return GL_REPEAT;
+    else if (!N_stricmp(str, "GL_CLAMP_TO_EDGE")) return GL_CLAMP_TO_EDGE;
+    else if (!N_stricmp(str, "GL_CLAMP_TO_BORDER")) return GL_CLAMP_TO_BORDER;
+    else if (!N_stricmp(str, "GL_MIRRORED_REPEAT")) return GL_MIRRORED_REPEAT;
+
+	// None
+	return 0;
+}
+
+const char *FormatToString(uint32_t format)
+{
+    switch (format) {
+    case GL_RGBA8: return "GL_RGBA8";
+    case GL_RGBA12: return "GL_RGBA12";
+    case GL_RGBA16: return "GL_RGBA16";
+    };
+
+	// None
+	return "None";
+}
+
+uint32_t StrToFormat(const char *str)
+{
+    if (!N_stricmp(str, "GL_RGBA8")) return GL_RGBA8;
+    else if (!N_stricmp(str, "GL_RGBA12")) return GL_RGBA12;
+    else if (!N_stricmp(str, "GL_RGBA16")) return GL_RGBA16;
+    
+	// None
+    return 0;
 }
 
 #define BIG_INFO_STRING 8192

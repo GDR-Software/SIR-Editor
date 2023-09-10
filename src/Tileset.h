@@ -23,6 +23,12 @@ public:
     virtual bool Save(const string_t& path) const;
     virtual bool Save(json& data) const;
     virtual void Clear(void);
+
+    inline void SetTexture(object_ptr_t<CTexture>& tex)
+    { cTexture = tex; }
+
+    bool Write(FILE *fp) const;
+    bool Read(FILE *fp);
 private:
     bool LoadBIN(const string_t& path);
     bool LoadJSON(const string_t& path);
@@ -30,6 +36,7 @@ private:
     bool SaveJSON(const string_t& path) const;
 
     vector_t<maptile_t> tiles;
+    vector_t<tile2d_sprite_t> sprites;
     object_ptr_t<CTexture> cTexture;
 
     uint32_t numTiles;

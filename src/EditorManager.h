@@ -29,6 +29,7 @@ public: \
     virtual bool LoadList(void); \
     virtual void ClearList(void); \
     virtual void DrawRecent(void) override; \
+    void AddTool(object_ptr_t<tool>& Tool); \
     inline int GetBits(void) const { return bits; } \
     inline const tool_hash_table<tool>& GetList(void) const \
     { return toolList; } \

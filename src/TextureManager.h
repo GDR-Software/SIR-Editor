@@ -13,6 +13,9 @@ public:
     virtual void DrawWizard(void) override
     { DrawWizard("Texture Wizard"); }
 
+    inline CTexture *LastCreated(void)
+    { return lastCreated; }
+
     virtual inline bool HasWizard(void) const override
     { return true; }
     virtual inline bool HasOpenRecent(void) const override
@@ -23,6 +26,8 @@ public:
     { return "Texture Manager"; }
 
     IMPL_EDITOR_MANAGER(CTextureManager, CTexture)
+private:
+    CTexture *lastCreated;
 };
 
 #endif

@@ -13,7 +13,7 @@ CTileset::CTileset()
     height = 0;
     tileWidth = 0;
     tileHeight = 0;
-    cTexture = Allocate<CTexture>();
+    cTexture = NULL;
 }
 
 CTileset::~CTileset()
@@ -25,7 +25,7 @@ void CTileset::Clear(void)
 {
     tiles.clear();
     Deallocate(cTexture);
-    name = "untitled-tileset.tile";
+    name = "untitled-tileset";
 }
 
 void CTileset::GenTiles(void)
@@ -36,7 +36,7 @@ void CTileset::GenTiles(void)
 
     Printf("Generating tileset...");
 
-    auto genCoords = [&](const glm::vec2& sheetDims, const glm::vec2& spriteDims, const glm::vec2& pos, float texcoords[4][2]) {
+    auto genCoords = [&](const glm::vec2& sheetDims, const glm::vec2& spriteDims, const glm::vec2& pos, float** texcoords) {
         const glm::vec2 min = { (pos.x * spriteDims.x) / sheetDims.x, (pos.y * spriteDims.y) / sheetDims.x };
         const glm::vec2 max = { ((pos.x + 1) * spriteDims.x) / sheetDims.y, ((pos.y + 1) * spriteDims.y) / sheetDims.y };
 
@@ -89,14 +89,14 @@ bool CTileset::Save(const string_t& path) const
     const char *ext;
 
     ext = COM_GetExtension(path.c_str());
-    if (!ext || N_stricmp(ext, ".jtile") != 0 && N_stricmp(ext, ".t2d") != 0) {
+    if (!ext || N_stricmp(ext, ".jtile") != 0 && N_stricmp(ext, TILESET_FILE_EXT_RAW) != 0) {
         return false;
     }
 
     if (!N_stricmp(ext, ".jtile")) {
         return SaveJSON(path);
     }
-    else if (!N_stricmp(ext, ".t2d")) {
+    else if (!N_stricmp(ext, TILESET_FILE_EXT)) {
         return SaveBIN(path);
     }
 
@@ -116,7 +116,10 @@ bool CTileset::Save(json& data) const
     tileset["tileheight"] = tileHeight;
     tileset["numTiles"] = numTiles;
 
-    return cTexture->Save(data);
+    if (cTexture)
+        return cTexture->Save(data);
+    
+    return true;
 }
 
 bool CTileset::Load(const json& data)
@@ -128,7 +131,10 @@ bool CTileset::Load(const json& data)
     tileHeight = tileset.at("tileHeight");
     numTiles = tileset.at("numTileset");
 
-    return cTexture->Load(data);
+    if (cTexture)
+        return cTexture->Load(data);
+    
+    return true;
 }
 
 bool CTileset::Load(const string_t& path)
@@ -140,13 +146,93 @@ bool CTileset::Load(const string_t& path)
     return LoadBIN(path);
 }
 
+bool CTileset::Read(FILE *fp)
+{
+    tile2d_header_t header;
+    tile2d_info_t info;
+
+    memset(&header, 0, sizeof(header));
+
+    SafeRead(&header, sizeof(header), fp);
+    
+    if (header.magic != TILESET_MAGIC) {
+        return false;
+    }
+    if (header.version != TILESET_VERSION) {
+        return false;
+    }
+
+    if (!cTexture)
+        cTexture = Allocate<CTexture>();
+
+    CopyLump((void *)&info, sizeof(info), header.lumps, TILESET_LUMP_INFO, fp);
+    CopyLump<tile2d_sprite_t>(sprites, sizeof(tile2d_sprite_t), header.lumps, TILESET_LUMP_SPRITES, fp);
+    CopyLump<byte>(cTexture->GetBuffer(), sizeof(byte), header.lumps, TILESET_LUMP_TEXTURE, fp);
+
+    return true;
+}
+
+bool CTileset::Write(FILE *fp) const
+{
+    tile2d_header_t header;
+    tile2d_info_t info;
+    uint64_t pos;
+    const uint64_t texSize = cTexture->GetWidth() * cTexture->GetHeight() * cTexture->GetChannels();
+
+    memset(&header, 0, sizeof(header));
+
+    pos = ftell(fp);
+
+    // overwritten later
+    SafeWrite(&header, sizeof(header), fp);
+
+    header.magic = TILESET_MAGIC;
+    header.version = TILESET_VERSION;
+
+    info.numTiles = numTiles;
+    info.tileHeight = tileHeight;
+    info.tileWidth = tileWidth;
+    info.width = width;
+    info.height = height;
+    info.magfilter = cTexture->GetMagFilter();
+    info.minfilter = cTexture->GetMinFilter();
+    info.wrapS = cTexture->GetWrapS();
+    info.wrapT = cTexture->GetWrapT();
+
+    AddLump(&info, sizeof(info), header.lumps, TILESET_LUMP_INFO, fp);
+    AddLump(sprites.data(), sizeof(tile2d_sprite_t) * sprites.size(), header.lumps, TILESET_LUMP_SPRITES, fp);
+    if (!cTexture) {
+        byte buf[1];
+        AddLump(buf, sizeof(byte), header.lumps, TILESET_LUMP_TEXTURE, fp);
+    }
+    else {
+        AddLump(cTexture->GetBuffer().data(), sizeof(byte) * texSize, header.lumps, TILESET_LUMP_TEXTURE, fp);
+    }
+
+    fseek(fp, pos, SEEK_SET);
+    SafeWrite(&header, sizeof(header), fp);
+
+    return true;
+}
+
 bool CTileset::LoadBIN(const string_t& path)
 {
+    FILE *fp;
+
+    fp = SafeOpenRead(path.c_str());
+    Read(fp);
+    fclose(fp);
     return false;
 }
 
 bool CTileset::SaveBIN(const string_t& path) const
 {
+    FILE *fp;
+    
+    fp = SafeOpenWrite(path.c_str());
+    Write(fp);
+    fclose(fp);
+
     return false;
 }
 
@@ -170,9 +256,11 @@ bool CTileset::LoadJSON(const string_t& path)
     name = data.at("name");
     tileWidth = data.at("tilewidth");
     tileHeight = data.at("tileheight");
-    if (!cTexture->Load(data)) {
-        Printf("Failed to load tileset texture data");
-        return false;
+    if (cTexture) {
+        if (!cTexture->Load(data)) {
+            Printf("Failed to load tileset texture data");
+            return false;
+        }
     }
 
     name = path;
@@ -199,9 +287,11 @@ bool CTileset::SaveJSON(const string_t& path) const
     data["tileheight"] = tileHeight;
     data["numTiles"] = numTiles;
 
-    if (!cTexture->Save(data)) {
-        Printf("Failed to save tileset texture data");
-        return false;
+    if (cTexture) {
+        if (!cTexture->Save(data)) {
+            Printf("Failed to save tileset texture data");
+            return false;
+        }
     }
 
     if (!Editor::SaveJSON(data, path.c_str())) {

@@ -71,10 +71,7 @@ static wizard_t wizard;
 
 static void DrawMap(void)
 {
-    if (wizard.mapPtr) {
-        if (!N_stricmp(wizard.mapPtr, "untitled-map")) {
-            wizard.mapPtr = NULL;
-        }
+    if (wizard.mapPtr && wizard.mapPtr[0] && N_stricmp(wizard.mapPtr, "untitled-map") != 0) {
         ImGui::Text("Current Map: %s", wizard.mapPtr);
         if (ImGui::Button("Clear Map")) {
             wizard.mapPtr = NULL;
@@ -103,10 +100,7 @@ static void DrawMap(void)
 
 static void DrawTileset(void)
 {
-    if (wizard.tilesetPtr) {
-        if (!N_stricmp(wizard.tilesetPtr, "untitled-tileset")) {
-            wizard.tilesetPtr = NULL;
-        }
+    if (wizard.tilesetPtr && wizard.tilesetPtr[0] && N_stricmp(wizard.tilesetPtr, "untitled-tileset") != 0) {
         ImGui::Text("Current Tileset: %s", wizard.tilesetPtr);
         if (ImGui::Button("Clear Tileset")) {
             wizard.tilesetPtr = NULL;
@@ -119,7 +113,7 @@ static void DrawTileset(void)
                     wizard.tilesetPtr = it.first.c_str();
                 }
             }
-            ImGui::End();
+            ImGui::EndMenu();
         }
     }
     else {
@@ -138,7 +132,7 @@ static void DrawCreateProject(void)
     CProject *curTool = Editor::GetProjManager()->GetCurrent();
     string_hash_t<object_ptr_t<CProject>>& toolList = Editor::GetProjManager()->GetList();
 
-    if (ImGui::Begin("Create Project")) {
+    if (ImGui::BeginMenu("Create Project")) {
         ImGui::InputText("Project Name", wizard.name, sizeof(wizard.name));
         DrawMap();
         DrawTileset();
@@ -147,31 +141,16 @@ static void DrawCreateProject(void)
             wizard.entered = false;
             curTool->SetName(wizard.name);
             curTool->SetModified(true);
-            if (wizard.mapPtr)
+            if (wizard.mapPtr && wizard.mapPtr[0])
                 curTool->SetMap(Editor::GetMapManager()->GetTool(wizard.mapPtr));
-            if (wizard.tilesetPtr)
+            if (wizard.tilesetPtr && wizard.tilesetPtr[0])
                 curTool->SetTileset(Editor::GetTilesetManager()->GetTool(wizard.tilesetPtr));
 
             toolList.try_emplace(wizard.name, Allocate<CProject>());
             memset(&wizard, 0, sizeof(wizard));
-            ImGui::End();
+            ImGui::EndMenu();
         }
-        ImGui::End();
-    }
-}
-
-static void DrawModifyMap(void)
-{
-    if (wizard.mapPtr) {
-        if (!N_stricmp(wizard.mapPtr, "untitled-map")) {
-            wizard.mapPtr = NULL;
-        }
-        ImGui::Text("%s", wizard.mapPtr);
-        if (ImGui::Button("Clear Map")) {
-            wizard.mapPtr = NULL;
-        }
-    }
-    else {
+        ImGui::EndMenu();
     }
 }
 
@@ -191,9 +170,11 @@ void CProjectManager::DrawWizard(const string_t& menuTitle)
 
     if (ImGui::BeginMenu(menuTitle.c_str())) {
         ImGui::InputText("Project Name", wizard.name, sizeof(wizard.name));
-        DrawModifyMap();
+        DrawMap();
+        DrawTileset();
         if (ImGui::Button("Update Project")) {
             wizard.entered = false;
+
             curTool->SetName(wizard.name);
             curTool->SetModified(true);
             if (wizard.mapPtr)

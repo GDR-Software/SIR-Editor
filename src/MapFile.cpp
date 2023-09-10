@@ -3,29 +3,6 @@
 #include "Map.h"
 #include "Editor.h"
 
-#define MAP_IDENT (('B'<<24)+('F'<<16)+('F'<<8)+'M')
-#define MAP_VERSION 1
-
-typedef struct {
-    uint64_t fileofs;
-    uint64_t length;
-} maplump_t;
-
-#define LUMP_TILES 0
-#define LUMP_CHECKPOINTS 1
-#define LUMP_SPAWNS 2
-#define LUMP_LIGHTS 3
-#define LUMP_VERTICES 4
-#define LUMP_INDICES 5
-#define NUMLUMPS 6
-
-typedef struct
-{
-	uint32_t ident;
-	uint32_t version;
-    maplump_t lumps[NUMLUMPS];
-} mapheader_t;
-
 static void SwapBlock(uint32_t *block, uint64_t size)
 {
     size >>= 2;
@@ -65,59 +42,73 @@ void SwapMapFile(CMap *cMap)
     SwapBlock((uint32_t *)cMap->GetSpawns().data(), cMap->GetSpawns().size() * sizeof(mapspawn_t));
 }
 
-template<typename T>
-static uint64_t CopyLump(vector_t<T>& dest, uint64_t size, int lumpnum, mapheader_t *header)
+uint64_t CopyLump(void *dest, uint64_t size, lump_t *lumps, int lumpnum, FILE *fp)
 {
     uint64_t length, ofs;
-    
-    length = header->lumps[lumpnum].length;
-    ofs = header->lumps[lumpnum].fileofs;
+
+    length = lumps[lumpnum].length;
+    ofs = lumps[lumpnum].fileofs;
 
     if (length % size) {
         Error("CopyLump: bad lump size");
     }
-    dest.resize(length / size);
-    memcpy(dest.data(), (byte *)header + ofs, length);
+    SafeRead(dest, length, fp);
+
+    return length / size;
+}
+
+uint64_t CopyLump(void **dest, uint64_t size, lump_t *lumps, int lumpnum, FILE *fp)
+{
+    uint64_t length, ofs;
+
+    length = lumps[lumpnum].length;
+    ofs = lumps[lumpnum].fileofs;
+
+    if (length % size) {
+        Error("CopyLump: bad lump size");
+    }
+    *dest = Malloc(length);
+    SafeRead(*dest, length, fp);
 
     return length / size;
 }
 
 bool LoadMap(CMap *cMap, const char *filename)
 {
-	mapheader_t *header;
+	mapheader_t header;
+    FILE *fp;
 	
 	if (!filename[0]) {
 		Printf("LoadMap: invalid filename (empty)");
 		return false;
 	}
+    fp = SafeOpenRead(filename);
+    SafeRead(&header, sizeof(header), fp);
+    SwapBlock((uint32_t *)&header, sizeof(header));
 
-    LoadFile(filename, (void **)&header);
-    SwapBlock((uint32_t *)header, sizeof(*header));
-
-    if (header->ident != MAP_IDENT) {
+    if (header.ident != MAP_IDENT) {
         Error("Bad BFFM file, identifier is wrong");
     }
 
-    CopyLump(cMap->GetTiles(), sizeof(maptile_t), LUMP_TILES, header);
-    CopyLump(cMap->GetCheckpoints(), sizeof(mapcheckpoint_t), LUMP_CHECKPOINTS, header);
-    CopyLump(cMap->GetSpawns(), sizeof(mapspawn_t), LUMP_SPAWNS, header);
+    CopyLump(cMap->GetTiles(), sizeof(maptile_t), header.lumps, MAP_LUMP_TILES, fp);
+    CopyLump(cMap->GetCheckpoints(), sizeof(mapcheckpoint_t), header.lumps, MAP_LUMP_CHECKPOINTS, fp);
+    CopyLump(cMap->GetSpawns(), sizeof(mapspawn_t), header.lumps, MAP_LUMP_SPAWNS, fp);
+
+    fclose(fp);
 
     SwapMapFile(cMap);
-//    CopyLump(maplights, sizeof(maplight_t), LUMP_LIGHTS, header);
-//    numVertices = CopyLump((void **)&mapVertices, sizeof(mapvert_t), LUMP_VERTICES, header);
-//    numIndices = CopyLump((void **)&mapIndices, sizeof(uint32_t), LUMP_INDICES, header);
 	
 	return true;
 }
 
-static void AddLump(const void *data, uint64_t size, int lumpnum, mapheader_t *header, FILE *fp)
+void AddLump(const void *data, uint64_t size, lump_t *lumps, int lumpnum, FILE *fp)
 {
-    maplump_t *lump;
+    lump_t *lump;
 
     if (!size)
         return;
 
-    lump = &header->lumps[lumpnum];
+    lump = &lumps[lumpnum];
 
     lump->fileofs = LittleLong(ftell(fp));
     lump->length = LittleLong(size);
@@ -143,9 +134,9 @@ bool SaveMap(const CMap *cMap, const char *filename)
     // overwritten later
     SafeWrite(&header, sizeof(header), fp);
 
-    AddLump(cMap->GetTiles().data(), cMap->GetTiles().size() * sizeof(maptile_t), LUMP_TILES, &header, fp);
-    AddLump(cMap->GetCheckpoints().data(), cMap->GetCheckpoints().size() * sizeof(mapcheckpoint_t), LUMP_CHECKPOINTS, &header, fp);
-    AddLump(cMap->GetSpawns().data(), cMap->GetSpawns().size() * sizeof(mapspawn_t), LUMP_SPAWNS, &header, fp);
+    AddLump(cMap->GetTiles().data(), cMap->GetWidth() * cMap->GetHeight() * sizeof(maptile_t), header.lumps, MAP_LUMP_TILES, fp);
+    AddLump(cMap->GetCheckpoints().data(), cMap->GetCheckpoints().size() * sizeof(mapcheckpoint_t), header.lumps, MAP_LUMP_CHECKPOINTS, fp);
+    AddLump(cMap->GetSpawns().data(), cMap->GetSpawns().size() * sizeof(mapspawn_t), header.lumps, MAP_LUMP_SPAWNS, fp);
 
     fseek(fp, 0L, SEEK_SET);
     SafeWrite(&header, sizeof(header), fp);

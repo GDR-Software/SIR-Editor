@@ -79,7 +79,7 @@ bool CMap::Load(const string_t& path)
     const char *ext;
 
     ext = COM_GetExtension(path.c_str());
-    if (!ext || N_stricmp(ext, ".bmf") != 0 && N_stricmp(ext, ".jmap") != 0) {
+    if (!ext || N_stricmp(ext, MAP_FILE_EXT_RAW) != 0 && N_stricmp(ext, ".jmap") != 0) {
         return false;
     }
 

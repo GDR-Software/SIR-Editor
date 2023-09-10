@@ -4,8 +4,6 @@
 #include "Editor.h"
 #include <glad/glad.h>
 #include <execinfo.h>
-#include <backtrace.h>
-#include <cxxabi.h> // for demangling C++ symbols
 
 #define DEFAULT_GAMEPATH "Data"
 
@@ -13,94 +11,8 @@ object_ptr_t<Editor> Editor::editor;
 path_t Editor::curPath;
 static Command *cmdList;
 
-static struct backtrace_state *bt_state = NULL;
-
-static void bt_error_callback( void *data, const char *msg, int errnum )
-{
-    Error("libbacktrace ERROR: %d - %s", errnum, msg);
-}
-
-static void bt_syminfo_callback( void *data, uintptr_t pc, const char *symname,
-								 uintptr_t symval, uintptr_t symsize )
-{
-	if (symname != NULL) {
-		int status;
-		// FIXME: sucks that __cxa_demangle() insists on using malloc().. but so does printf()
-		char* name = abi::__cxa_demangle(symname, NULL, NULL, &status);
-		if (name != NULL) {
-			symname = name;
-		}
-		Printf("  %zu %s", pc, symname);
-		free(name);
-	} else {
-        Printf("  %zu (unknown symbol)", pc);
-	}
-}
-
-static int bt_pcinfo_callback( void *data, uintptr_t pc, const char *filename, int lineno, const char *function )
-{
-	if (data != NULL) {
-		int* hadInfo = (int*)data;
-		*hadInfo = (function != NULL);
-	}
-
-	if (function != NULL) {
-		int status;
-		// FIXME: sucks that __cxa_demangle() insists on using malloc()..
-		char* name = abi::__cxa_demangle(function, NULL, NULL, &status);
-		if (name != NULL) {
-			function = name;
-		}
-
-		const char* fileNameNeo = strstr(filename, "/neo/");
-		if (fileNameNeo != NULL) {
-			filename = fileNameNeo+1; // I want "neo/bla/blub.cpp:42"
-		}
-        Printf("  %zu %s:%d %s", pc, filename, lineno, function);
-		free(name);
-	}
-
-	return 0;
-}
-
-static void bt_error_dummy( void *data, const char *msg, int errnum )
-{
-	//CrashPrintf("ERROR-DUMMY: %d - %s\n", errnum, msg);
-}
-
-static int bt_simple_callback(void *data, uintptr_t pc)
-{
-	int pcInfoWorked = 0;
-	// if this fails, the executable doesn't have debug info, that's ok (=> use bt_error_dummy())
-	backtrace_pcinfo(bt_state, pc, bt_pcinfo_callback, bt_error_dummy, &pcInfoWorked);
-	if (!pcInfoWorked) { // no debug info? use normal symbols instead
-		// yes, it would be easier to call backtrace_syminfo() in bt_pcinfo_callback() if function == NULL,
-		// but some libbacktrace versions (e.g. in Ubuntu 18.04's g++-7) don't call bt_pcinfo_callback
-		// at all if no debug info was available - which is also the reason backtrace_full() can't be used..
-		backtrace_syminfo(bt_state, pc, bt_syminfo_callback, bt_error_callback, NULL);
-	}
-
-	return 0;
-}
-
-
-static void do_backtrace(void)
-{
-    // can't use idStr here and thus can't use Sys_GetPath(PATH_EXE) => added Posix_GetExePath()
-	const char* exePath = "mapeditor";
-	bt_state = backtrace_create_state(exePath[0] ? exePath : NULL, 0, bt_error_callback, NULL);
-
-    if (bt_state != NULL) {
-		int skip = 1; // skip this function in backtrace
-		backtrace_simple(bt_state, skip, bt_simple_callback, bt_error_callback, NULL);
-	} else {
-        Error("(No backtrace because libbacktrace state is NULL)");
-	}
-}
-
 void assert_failure(const char *expr, const char *file, const char *func, unsigned line)
 {
-    do_backtrace();
     Error(
         "Error: ImGui Assertion Failed:\n"
         "\tFile: %s\n"
@@ -141,6 +53,27 @@ Editor::Editor(void)
     parm_saveJsonTilesets = GetParm("-jtileset") != -1;
     parm_useInternalMaps = GetParm("-imap") != -1;
     parm_useInternalTilesets = GetParm("-itileset") != -1;
+
+    parm = GetParm("-compression");
+    if (parm != -1) {
+        const char *s = myargv[parm + 1];
+
+        if (!N_stricmp(s, "bzip2"))
+            parm_compression = COMPRESS_BZIP2;
+        else if (!N_stricmp(s, "zlib"))
+            parm_compression = COMPRESS_ZLIB;
+        else {
+            Printf("Bad parameter for compression: %s", s);
+            s = "zlib";
+            parm_compression = COMPRESS_ZLIB;
+        }
+        
+        Printf("Using compression library %s", s);
+    }
+    else {
+        parm_compression = COMPRESS_ZLIB;
+        Printf("Using compression library zlib");
+    }
     
     cGUI = Allocate<GUI>();
     curPath = std::filesystem::current_path();
@@ -461,6 +394,7 @@ void Editor::DrawFileMenu(void)
     }
     if (ImGui::BeginMenu("Open Project")) {
         setModeBits(EDITOR_WIDGET);
+        cProjectManager->SaveCurrent();
         ImGui::EndMenu();
         clearModeBits(EDITOR_WIDGET);
     }
@@ -520,29 +454,23 @@ void Editor::DrawPopups(void)
         return;
     }
     ImGui::BeginPopup(curPopup->title);
-    ImGui::Text(curPopup->message.c_str());
+    ImGui::Text(curPopup->message);
+    if (ImGui::Button(curPopup->confirmation)) {
+        *curPopup->yesno = true;
+    }
     ImGui::End();
 }
 
 void Editor::DrawWizardMenu(void)
 {
     char wizardname[MAX_GDR_PATH];
-    bool open;
-
-    open = ImGui::Begin("Wizard", NULL, ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
-    if (!open) {
-        editorMode &= ~EDITOR_WIZARD;
-    }
-    if (ImGui::BeginMenuBar()) {
-        for (const auto& it : managerList) {
-            if (it.second->HasWizard()) {
-                N_strncpyz(wizardname, va("%s Wizard", it.second->GetWizardName()), sizeof(wizardname));
-                it.second->DrawWizard(wizardname);
-            }
+    
+    for (const auto& it : managerList) {
+        if (it.second->HasWizard()) {
+            N_strncpyz(wizardname, va("%s Wizard", it.second->GetWizardName()), sizeof(wizardname));
+            it.second->DrawWizard(wizardname);
         }
-        ImGui::EndMenuBar();
     }
-    ImGui::End();
 }
 
 void Editor::Redo(void)
@@ -568,9 +496,9 @@ void Editor::DrawWidgets(void)
             DrawEditMenu();
             ImGui::EndMenu();
         }
-        if (ImGui::MenuItem("Wizard") || editorMode & EDITOR_WIZARD) {
-            editorMode |= EDITOR_WIZARD;
+        if (ImGui::BeginMenu("Wizard")) {
             DrawWizardMenu();
+            ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
     }
