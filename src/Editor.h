@@ -16,32 +16,6 @@
 
 class GUI;
 
-class Command
-{
-public:
-	inline Command(const char *_name, void (*_func)(void))
-		: name{_name}, func{_func}
-	{
-	}
-	~Command() = default;
-	
-    inline void setNext(Command *p)
-    { next = p; }
-	inline Command *getNext(void)
-	{ return next; }
-	inline const Command* getNext(void) const
-	{ return next; }
-	
-	inline const string_t& getName(void) const
-	{ return name; }
-	inline void Run(void)
-	{ func(); }
-private:
-	string_t name;
-	void (*func)(void);
-	Command *next;
-};
-
 #define EDITOR_SELECT 0x0000
 #define EDITOR_WIDGET 0x2000
 #define EDITOR_CTRL   0x4000
@@ -107,8 +81,6 @@ public:
     void DrawWidgets(void);
     void PollCommands(void);
 	void run(void);
-	void registerCommand(const char *name, void (*func)(void));
-	Command *findCommand(const char *name);
 
 	inline void setModeBits(int mode)
 	{ editorMode |= mode; }

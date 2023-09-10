@@ -196,6 +196,14 @@ typedef struct
 	char *binding;
 } nkey_t;
 
+typedef void (*cmdfunc_t)(void);
+
+void Cmd_Init(void);
+void Cmd_Execute(const char *text);
+void Cmd_AddCommand(const char *name, cmdfunc_t func);
+void Cmd_RemoveCommand(const char *name);
+void Cmd_Shutdown(void);
+
 extern nkey_t keys[NUMKEYS];
 
 #define arraylen(x) (sizeof((x))/sizeof((*x)))

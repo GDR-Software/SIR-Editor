@@ -31,6 +31,7 @@ OBJS=\
 	$(O)/TextureManager.o \
 	$(O)/EditorTool.o \
 	$(O)/EditorManager.o \
+	$(O)/Command.o
 
 $(O)/%.o: src/%.cpp
 	$(COMPILE)

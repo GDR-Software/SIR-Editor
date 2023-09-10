@@ -9,7 +9,6 @@
 
 object_ptr_t<Editor> Editor::editor;
 path_t Editor::curPath;
-static Command *cmdList;
 
 void assert_failure(const char *expr, const char *file, const char *func, unsigned line)
 {
@@ -20,6 +19,31 @@ void assert_failure(const char *expr, const char *file, const char *func, unsign
         "\tLine: %u\n"
         "\tExpression: %s",
     file, func, line, expr);
+}
+
+static void SetCompression_f(void)
+{
+    const char *str;
+
+    if (Argc() < 2) {
+        Printf(
+            "usage: setcompression <compression library>\n"
+            "\toptions: bzip2, zlib (default)");
+        return;
+    }
+
+    str = Argv(1);
+    if (!N_stricmp(str, "bzip2")) {
+        parm_compression = COMPRESS_BZIP2;
+        Printf("Set compression to bzip2");
+    }
+    else if (!N_stricmp(str, "zlib")) {
+        parm_compression = COMPRESS_ZLIB;
+        Printf("Set compression to zlib");
+    }
+    else {
+        Printf("Bad compression library option %s", str);
+    }
 }
 
 bool Editor::IsAllocated(void)
@@ -49,6 +73,8 @@ Editor::Editor(void)
     else
         load = NULL;
     
+    Cmd_Init();
+
     parm_saveJsonMaps = GetParm("-jmap") != -1;
     parm_saveJsonTilesets = GetParm("-jtileset") != -1;
     parm_useInternalMaps = GetParm("-imap") != -1;
@@ -74,6 +100,9 @@ Editor::Editor(void)
         parm_compression = COMPRESS_ZLIB;
         Printf("Using compression library zlib");
     }
+
+    Cmd_AddCommand("reloadfiles", this->ReloadFiles);
+    Cmd_AddCommand("setcompression", SetCompression_f);
     
     cGUI = Allocate<GUI>();
     curPath = std::filesystem::current_path();
@@ -107,11 +136,7 @@ Editor::Editor(void)
 
 Editor::~Editor()
 {
-	Command *cmd, *next;
-	for (cmd = cmdList; cmd; cmd = next) {
-		next = cmd->getNext();
-        Deallocate(cmd);
-	}
+    Cmd_Shutdown();
 }
 
 void Editor::CheckExtension(path_t& path, const char *ext)
@@ -246,51 +271,6 @@ void Editor::Init(int argc, char **argv)
     editor = (Editor *)Mem_Alloc(sizeof(*editor));
 #endif
     ::new (editor) Editor();
-}
-
-Command *Editor::findCommand(const char *name)
-{
-	Command *cmd;
-	for (cmd = cmdList; cmd; cmd = cmd->getNext()) {
-		if (!N_stricmp(cmd->getName().c_str(), name)) {
-			return cmd;
-		}
-	}
-	return NULL;
-}
-
-void Editor::registerCommand(const char *name, void (*func)(void))
-{
-	Command *cmd;
-	
-	if (findCommand(name)) {
-		Printf("Command '%s' already registered", name);
-	}
-	
-	cmd = Allocate<Command>(name, func);
-	cmd->setNext(cmdList);
-	cmdList = cmd;
-}
-
-void Editor::PollCommands(void)
-{
-	const char *inputBuf;
-	Command *cmd;
-	
-	inputBuf = cGUI->getImGuiInput();
-	
-	if (inputBuf[0] != '/' && inputBuf[0] != '\\') {
-		return;
-	}
-	else {
-		inputBuf++;
-		cmd = findCommand(inputBuf);
-		if (!cmd) {
-			Printf("No such command '%s'", inputBuf);
-            return;
-		}
-		cmd->Run();
-	}
 }
 
 static const char *SpawnEntityToString(uint32_t entity)
@@ -447,7 +427,7 @@ void Editor::DrawPopups(void)
         curPopup = popups.end() - 1;
     }
 
-    open = ImGui::Begin("Popup", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_Popup);
+    open = ImGui::Begin("Popup", NULL, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove);
     if (!open) {
         popups.pop_back();
         ImGui::End();
@@ -458,6 +438,7 @@ void Editor::DrawPopups(void)
     if (ImGui::Button(curPopup->confirmation)) {
         *curPopup->yesno = true;
     }
+    ImGui::EndPopup();
     ImGui::End();
 }
 
@@ -483,6 +464,13 @@ void Editor::Undo(void)
 
 void Editor::DrawEditMenu(void)
 {
+}
+
+void Editor::PollCommands(void)
+{
+    const char *inputBuf;
+    inputBuf = cGUI->getImGuiInput();
+    Cmd_Execute(inputBuf);
 }
 
 void Editor::DrawWidgets(void)
@@ -511,7 +499,7 @@ void Editor::run(void)
 		cGUI->BeginFrame();
 		cGUI->PollEvents(this);
 		
-		PollCommands();
+        PollCommands();
         DrawWidgets();
 		
 		cGUI->EndFrame();
