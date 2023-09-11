@@ -43,7 +43,7 @@ static void MakePath(char *path, uint64_t pathlen, const eastl::string& name)
     if (IsAbsolutePath(name.c_str())) {
         N_strncpyz(path, BuildOSPath(Editor::GetPWD(), "Data", name.c_str()), pathlen);
     }
-    COM_DefaultExtension(path, pathlen, ".bmf");
+    COM_DefaultExtension(path, pathlen, MAP_FILE_EXT);
 }
 
 void CMapManager::DrawRecent(void)
@@ -78,6 +78,7 @@ typedef struct
     int numCheckpoints;
     int numSpawns;
     int mode;
+    CMap *mapPtr;
 
     bool overwriting;
     bool entered = false;
@@ -86,62 +87,10 @@ static wizard_t wizard;
 
 static void CheckExtension(void)
 {
-    if (N_stristr(wizard.name, TEXTURE_FILE_EXT) || COM_GetExtension(wizard.name) != NULL) {
+    if (N_stristr(wizard.name, MAP_FILE_EXT) || COM_GetExtension(wizard.name) != NULL) {
         COM_StripExtension(wizard.name, wizard.name, sizeof(wizard.name));
     }
 }
-
-static void DrawCreateMap(void)
-{
-    if (wizard.mode != MODE_CREATE_MAP) {
-        return;
-    }
-
-    CMap *curTool = Editor::GetMapManager()->GetCurrent();
-    string_hash_t<object_ptr_t<CMap>>& toolList = Editor::GetMapManager()->GetList();
-
-    if (ImGui::BeginMenu("Create Map")) {
-        ImGui::InputText("Map Name", wizard.name, sizeof(wizard.name));
-        ImGui::InputInt("Width", &wizard.width);
-        ImGui::InputInt("Height", &wizard.height);
-        ImGui::InputInt("# of Checkpoints", &wizard.numCheckpoints);
-        ImGui::InputInt("# of Spawns", &wizard.numSpawns);
-
-        if (ImGui::Button("Create Map")) {
-            wizard.entered = false;
-
-            if (toolList.find(wizard.name) != toolList.end()) {
-                Editor::PushPopup({"Overwrite Map?", "You Are About To Overwrite An Existing Map, Are You Sure You Want To Continue?", "Confirm Overwrite", &wizard.overwriting});
-
-                if (wizard.overwriting) {
-                    Printf("Overwriting map %s", wizard.name);
-                    curTool = toolList.at(wizard.name);
-                }
-            }
-            else {
-                CheckExtension();
-                toolList.try_emplace(wizard.name, Allocate<CMap>());
-            }
-
-            curTool = toolList.at(wizard.name);
-            curTool->Resize(wizard.dims);
-            curTool->SetName(wizard.name);
-            curTool->GetCheckpoints().resize(wizard.numCheckpoints);
-            curTool->GetSpawns().resize(wizard.numSpawns);
-            curTool->Save(string_t(BuildOSPath(Editor::GetPWD(), "Data", va("%s" MAP_FILE_EXT, wizard.name))));
-
-            memset(&wizard, 0, sizeof(wizard));
-            wizard.mode = MODE_INVALID;
-        }
-        
-        ImGui::EndMenu();
-    }
-    else {
-        memset(&wizard, 0, sizeof(wizard));
-    }
-}
-
-
 
 void CMapManager::DrawWizard(const string_t& menuTitle)
 {
@@ -149,42 +98,71 @@ void CMapManager::DrawWizard(const string_t& menuTitle)
         memset(&wizard, 0, sizeof(wizard));
         wizard.entered = true;
     }
-    
-    if (menuTitle == "Create Map" || wizard.mode == MODE_CREATE_MAP) {
-        wizard.mode = MODE_CREATE_MAP;
-        DrawCreateMap();
-        return;
-    }
 
-    wizard.width = curTool->GetWidth();
-    wizard.height = curTool->GetHeight();
-    wizard.numCheckpoints = curTool->GetCheckpoints().size();
-    wizard.numSpawns = curTool->GetSpawns().size();
-    N_strncpyz(wizard.name, curTool->GetName().c_str(), sizeof(wizard.name));
-
-    if (ImGui::BeginMenu(menuTitle.c_str())) {
+    if (ImGui::BeginMenu("Map Wizard")) {
+        ImGui::InputText("Map Name", wizard.name, sizeof(wizard.name));
         ImGui::InputInt("Width", &wizard.width);
         ImGui::InputInt("Height", &wizard.height);
-        
-        if (ImGui::Button("Update Map")) {
+        ImGui::InputInt("# of Checkpoints", &wizard.numCheckpoints);
+        ImGui::InputInt("# of Spawns", &wizard.numSpawns);
+
+        if (!wizard.mapPtr && ImGui::BeginMenu("Open Map")) {
+            if (!toolList.size()) {
+                ImGui::MenuItem("No Recent Maps");
+            }
+            else {
+                for (auto& it : toolList) {
+                    if (ImGui::MenuItem(it.first.c_str())) {
+                        wizard.mapPtr = it.second;
+                        wizard.mapPtr->Load(string_t(it.first.c_str()));
+
+                        wizard.width = wizard.mapPtr->GetWidth();
+                        wizard.height = wizard.mapPtr->GetHeight();
+                        wizard.numCheckpoints = wizard.mapPtr->GetCheckpoints().size();
+                        wizard.numSpawns = wizard.mapPtr->GetSpawns().size();
+                        N_strncpyz(wizard.name, wizard.mapPtr->GetName().c_str(), sizeof(wizard.name));
+                        COM_StripExtension(wizard.name, wizard.name, sizeof(wizard.name));
+                        break;
+                    }
+                }
+            }
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::Button(wizard.mapPtr ? "Update Map" : "Create Map")) {
             bool modified = false;
-            if (wizard.width != curTool->GetWidth() || wizard.height != curTool->GetHeight()) {
+
+            CheckExtension();
+            string_t path = BuildOSPath(Editor::GetPWD(), "Data", va("%s" MAP_FILE_EXT, wizard.name));
+            Printf("Saving map '%s'", path.c_str());
+
+            if (wizard.mapPtr) {
+                if (wizard.width != wizard.mapPtr->GetWidth() || wizard.height != wizard.mapPtr->GetHeight()) {
+                    wizard.mapPtr->Resize(wizard.dims);
+                }
+                if (wizard.mapPtr->GetName() != wizard.name) {
+                    wizard.mapPtr->SetName(wizard.name);
+                }
+                if (wizard.numCheckpoints != wizard.mapPtr->GetCheckpoints().size()) {
+                    wizard.mapPtr->GetCheckpoints().resize(wizard.numCheckpoints);
+                }
+                if (wizard.numSpawns != wizard.mapPtr->GetSpawns().size()) {
+                    wizard.mapPtr->GetSpawns().resize(wizard.numSpawns);
+                }
+                wizard.mapPtr->Save(path);
+                curTool = wizard.mapPtr;
+            }
+            else {
+                toolList.try_emplace(path.c_str(), Allocate<CMap>());
+
+                curTool = toolList.at(path.c_str());
                 curTool->Resize(wizard.dims);
-                modified = true;
-            }
-            if (curTool->GetName() != wizard.name) {
-                curTool->SetName(wizard.name);
-                modified = true;
-            }
-            if (wizard.numCheckpoints != curTool->GetCheckpoints().size()) {
                 curTool->GetCheckpoints().resize(wizard.numCheckpoints);
-                modified = true;
-            }
-            if (wizard.numSpawns != curTool->GetSpawns().size()) {
                 curTool->GetSpawns().resize(wizard.numSpawns);
-                modified = true;
+                curTool->SetName(wizard.name);
+                curTool->Save(path);
             }
-            curTool->SetModified(modified);
+            memset(&wizard, 0, sizeof(wizard));
         }
         ImGui::EndMenu();
     }

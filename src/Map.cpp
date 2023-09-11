@@ -10,6 +10,7 @@ CMap::CMap(void)
     name = "untitled-map";
     width = 0;
     height = 0;
+    cTileset = NULL;
 }
 
 CMap::~CMap()

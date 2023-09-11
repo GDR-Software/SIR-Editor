@@ -81,6 +81,7 @@ public:
     void DrawWidgets(void);
     void PollCommands(void);
 	void run(void);
+	void ReloadFiles(void);
 
 	inline void setModeBits(int mode)
 	{ editorMode |= mode; }
@@ -136,7 +137,6 @@ private:
 	void RecursiveDirectoryIterator(const path_t& path, vector_t<FileEntry>& dirList, uint32_t& depth);
 	void DisplayFileCache(const vector_t<FileEntry>& cache, uint32_t& depth);
 	void InitFiles(void);
-	void ReloadFiles(void);
 	void SaveFileCache(void);
 	void LoadFileCache(void);
 

@@ -17,7 +17,7 @@ bool CTilesetManager::LoadList(void)
 {
     vector_t<path_t> fileList;
 
-    Editor::ListFiles(fileList, "Data/", {".jtile", ".t2d"});
+    Editor::ListFiles(fileList, "Data/", {".jtile", TILESET_FILE_EXT});
 
     curTool = Editor::GetTileset();
 
@@ -37,17 +37,28 @@ void CTilesetManager::ClearList(void)
     listSize = 0;
 }
 
+static void MakePath(char *path, uint64_t pathlen, const eastl::string& name)
+{
+    N_strncpyz(path, name.c_str(), pathlen);
+    if (IsAbsolutePath(name.c_str())) {
+        N_strncpyz(path, BuildOSPath(Editor::GetPWD(), "Data", name.c_str()), pathlen);
+    }
+    COM_DefaultExtension(path, pathlen, TILESET_FILE_EXT);
+}
+
 void CTilesetManager::DrawRecent(void)
 {
+    char str[MAX_OSPATH*2+1];
     if (ImGui::BeginMenu("Tilesets")) {
         if (!toolList.size()) {
             ImGui::MenuItem("No Recent Tileset");
         }
         else {
             for (auto& it : toolList) {
-                if (ImGui::MenuItem(it.first.c_str())) {
+                MakePath(str, sizeof(str), it.first);
+                if (ImGui::MenuItem(str)) {
                     curTool = it.second;
-                    curTool->Load(it.first);
+                    curTool->Load(string_t(str));
                 }
             }
         }

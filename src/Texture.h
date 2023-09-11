@@ -11,12 +11,15 @@ public:
     CTexture(void);
     virtual ~CTexture();
 
+    bool LoadImage(const byte *buffer, uint64_t buflen);
     bool LoadImage(const string_t& path);
     virtual bool Load(const string_t& path);
     virtual bool Load(const json& data);
     virtual bool Save(json& data) const;
     virtual bool Save(const string_t& path) const;
     virtual void Clear(void);
+
+    void ReInit(void); // reinitializes the texture's parameters for the gpu
 
     void SetParms(uint32_t min, uint32_t mag, uint32_t WrapS, uint32_t WrapT, uint32_t target)
     {
@@ -32,6 +35,7 @@ public:
 
     bool Write(FILE *fp) const;
     bool Read(FILE *fp);
+    void Read(const byte *buffer);
 
     inline uint32_t GetWidth(void) const
     { return width; }
@@ -45,6 +49,10 @@ public:
     { return wrapS; }
     inline uint32_t GetWrapT(void) const
     { return wrapT; }
+    inline uint32_t GetFormat(void) const
+    { return format; }
+    inline bool IsMultisampled(void) const
+    { return multisampling; }
     inline uint32_t GetChannels(void) const
     { return channels; }
     inline const vector_t<byte>& GetBuffer(void) const

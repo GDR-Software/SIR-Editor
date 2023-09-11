@@ -24,9 +24,15 @@ public:
     virtual bool Save(json& data) const;
     virtual void Clear(void);
 
+    inline const object_ptr_t<CTexture>& GetTexture(void) const
+    { return cTexture; }
+    inline object_ptr_t<CTexture>& GetTexture(void)
+    { return cTexture; }
+
     inline void SetTexture(object_ptr_t<CTexture>& tex)
     { cTexture = tex; }
 
+    bool Read(const byte *buffer);
     bool Write(FILE *fp) const;
     bool Read(FILE *fp);
 private:

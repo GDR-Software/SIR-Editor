@@ -87,15 +87,6 @@ static void DrawMap(void)
             ImGui::EndMenu();
         }
     }
-    else {
-        if (Editor::GetMapManager()->HasWizard()) {
-            Editor::GetMapManager()->DrawWizard("Create Map");
-            wizard.mapPtr = Editor::GetMapManager()->GetCurrentName().c_str();
-            if (!N_stricmp(wizard.mapPtr, "untitled-map")) {
-                wizard.mapPtr = NULL;
-            }
-        }
-    }
 }
 
 static void DrawTileset(void)
@@ -114,15 +105,6 @@ static void DrawTileset(void)
                 }
             }
             ImGui::EndMenu();
-        }
-    }
-    else {
-        if (Editor::GetTilesetManager()->HasWizard()) {
-            Editor::GetTilesetManager()->DrawWizard("Create Tileset");
-            wizard.tilesetPtr = Editor::GetTilesetManager()->GetCurrentName().c_str();
-            if (!N_stricmp(wizard.tilesetPtr, "untitled-tileset")) {
-                wizard.tilesetPtr = NULL;
-            }
         }
     }
 }

@@ -39,6 +39,10 @@ public:
     { return spawns; }
     inline vector_t<maptile_t>& GetTiles(void)
     { return tiles; }
+    inline const object_ptr_t<CTileset>& GetTileset(void) const
+    { return cTileset; }
+    inline object_ptr_t<CTileset>& GetTileset(void)
+    { return cTileset; }
 
     bool AddCheckpoint(const mapcheckpoint_t& c);
     inline bool AddSpawn(const mapspawn_t& s)

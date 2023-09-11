@@ -46,6 +46,68 @@ static void SetCompression_f(void)
     }
 }
 
+static void ReloadFiles_f(void)
+{
+    Editor::Get()->ReloadFiles();
+}
+
+static void ListMaps_f(void)
+{
+    Printf("Map List:");
+    for (const auto& it : Editor::GetMapManager()->GetList()) {
+        Printf("%s", it.first.c_str());
+    }
+    Printf("Number of Maps: %lu", Editor::GetMapManager()->GetList().size());
+}
+
+static void MapInfo_f(void)
+{
+    string_t ospath;
+    char mapname[MAX_GDR_PATH];
+    const char *ext;
+    const CMap *cMap;
+    const CMapManager *manager;
+
+    if (Argc() < 2) {
+        Printf("usage: mapinfo <mapname>");
+        return;
+    }
+
+    manager = Editor::GetMapManager();
+    N_strncpyz(mapname, Argv(1), sizeof(mapname));
+    ext = COM_GetExtension(mapname);
+    if (ext) {
+        COM_StripExtension(mapname, mapname, sizeof(mapname));
+    }
+
+    ospath = BuildOSPath(Editor::GetPWD(), "Data", va("%s" MAP_FILE_EXT, mapname));
+
+    if (manager->GetList().find(ospath.c_str()) == manager->GetList().end()) {
+        Printf("No such map %s", ospath.c_str());
+        return;
+    }
+    cMap = manager->GetTool(ospath);
+
+    Printf(
+        "Map Info for '%s':\n"
+        "\tNum Checkpoints: %lu\n"
+        "\tNum Spawns: %lu\n"
+        "\tMap Width: %i\n"
+        "\tMap Height: %i\n"
+        "\tTileset: %s\n",
+    mapname, cMap->GetCheckpoints().size(), cMap->GetSpawns().size(), cMap->GetWidth(), cMap->GetHeight(),
+    cMap->GetTileset() ? cMap->GetTileset()->GetName().c_str() : "None");
+}
+
+static void ListTilesets_f(void)
+{
+    Printf("Tileset List:");
+    for (const auto& it : Editor::GetTilesetManager()->GetList()) {
+        Printf("%s", it.first.c_str());
+    }
+    Printf("Number of Tilesets: %lu", Editor::GetTilesetManager()->GetList().size());
+}
+
 bool Editor::IsAllocated(void)
 {
     if (!editor)
@@ -101,8 +163,18 @@ Editor::Editor(void)
         Printf("Using compression library zlib");
     }
 
-    Cmd_AddCommand("reloadfiles", this->ReloadFiles);
-    Cmd_AddCommand("setcompression", SetCompression_f);
+    Cmd_AddCommand("reloadfiles", NULL, ReloadFiles_f);
+    Cmd_AddCommand("maplist", NULL, ListMaps_f);
+    Cmd_AddCommand("tilesetlist", NULL, ListTilesets_f);
+    Cmd_AddCommand("mapinfo",
+        "usage: mapinfo <mapname>\n"
+        "\tmapname: map to get info from"
+    , MapInfo_f);
+    Cmd_AddCommand("setcompression",
+        "usage: setcompression <compression library\n"
+        "\tbzip2: use bzip2 library for compression\n"
+        "\tzlib: use zlib library for compression (default)"
+    , SetCompression_f);
     
     cGUI = Allocate<GUI>();
     curPath = std::filesystem::current_path();

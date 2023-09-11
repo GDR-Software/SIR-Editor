@@ -33,10 +33,11 @@ void CTileset::GenTiles(void)
     const uint32_t numTilesX = cTexture->GetWidth() / tileWidth;
     const uint32_t numTilesY = cTexture->GetHeight() / tileHeight;
     maptile_t *tile;
+    tile2d_sprite_t *spr;
 
     Printf("Generating tileset...");
 
-    auto genCoords = [&](const glm::vec2& sheetDims, const glm::vec2& spriteDims, const glm::vec2& pos, float** texcoords) {
+    auto genCoords = [&](const glm::vec2& sheetDims, const glm::vec2& spriteDims, const glm::vec2& pos, float texcoords[4][2]) {
         const glm::vec2 min = { (pos.x * spriteDims.x) / sheetDims.x, (pos.y * spriteDims.y) / sheetDims.x };
         const glm::vec2 max = { ((pos.x + 1) * spriteDims.x) / sheetDims.y, ((pos.y + 1) * spriteDims.y) / sheetDims.y };
 
@@ -52,18 +53,22 @@ void CTileset::GenTiles(void)
 
     tiles.clear();
     tiles.resize(numTilesX * numTilesY);
+    sprites.resize(numTilesX * numTilesY);
     numTiles = numTilesX * numTilesY;
     modified = true;
 
     for (uint32_t y = 0; y < numTilesY; y++) {
         for(uint32_t x = 0; x < numTilesX; x++) {
             tile = &tiles[y * numTilesX + x];
+            spr = &sprites[y * numTilesX + x];
             tile->index = y * numTilesX + x;
+            spr->texIndex = tile->index;
 
             tile->pos[0] = x;
             tile->pos[1] = y;
+            tile->texcoords = (float **)spr->texcoords;
 
-            genCoords({ cTexture->GetWidth(), cTexture->GetHeight() }, { tileWidth, tileHeight }, { x, y }, tile->texcoords);
+            genCoords({ cTexture->GetWidth(), cTexture->GetHeight() }, { tileWidth, tileHeight }, { x, y }, spr->texcoords);
         }
     }
 }
@@ -89,14 +94,14 @@ bool CTileset::Save(const string_t& path) const
     const char *ext;
 
     ext = COM_GetExtension(path.c_str());
-    if (!ext || N_stricmp(ext, ".jtile") != 0 && N_stricmp(ext, TILESET_FILE_EXT_RAW) != 0) {
+    if (!ext || N_stricmp(ext, "jtile") != 0 && N_stricmp(ext, TILESET_FILE_EXT_RAW) != 0) {
         return false;
     }
 
-    if (!N_stricmp(ext, ".jtile")) {
+    if (!N_stricmp(ext, "jtile")) {
         return SaveJSON(path);
     }
-    else if (!N_stricmp(ext, TILESET_FILE_EXT)) {
+    else if (!N_stricmp(ext, TILESET_FILE_EXT_RAW)) {
         return SaveBIN(path);
     }
 
@@ -146,28 +151,134 @@ bool CTileset::Load(const string_t& path)
     return LoadBIN(path);
 }
 
+bool CTileset::Read(const byte *buffer)
+{
+    const tile2d_header_t *header;
+    const tile2d_info_t *info;
+    char *buf, *cbuf;
+    uint64_t buflen;
+
+    header = (tile2d_header_t *)buffer;
+
+    if (header->magic != TILE2D_MAGIC) {
+        return false;
+    }
+    if (header->version != TILE2D_VERSION) {
+        return false;
+    }
+
+    info = &header->info;
+
+    //
+    // load the sprites
+    //
+    
+    // compression?
+    if (info->compression != COMPRESS_NONE) {
+        cbuf = (char *)Malloc(info->compressedSize);
+        memcpy(cbuf, (byte *)(header + 1), info->compressedSize);
+        buf = Decompress(cbuf, info->compressedSize, &buflen, info->compression);
+        buffer += info->compressedSize;
+
+        if (buflen % sizeof(tile2d_sprite_t)) {
+            Error("CTileset::Read: odd lump size for sprites");
+        }
+
+        sprites.resize(buflen / sizeof(tile2d_sprite_t));
+        memcpy(sprites.data(), buf, buflen);
+
+        Free(buf);
+        Free(cbuf);
+    }
+    // otherwise just read
+    else {
+        sprites.resize(info->numTiles);
+        memcpy(sprites.data(), (byte *)(header + 1), sprites.size() * sizeof(tile2d_sprite_t));
+        buffer += sizeof(tile2d_sprite_t) * info->numTiles;
+    }
+
+    //
+    // load the texture
+    //
+
+    // is there a texture?
+    if (!info->hasTexture) { // this isn't best practice, but just warn the user
+        Printf("WARNING: no texture found in " TILESET_FILE_EXT " file, this is only allowed in this map editor, not in the game");
+        return true;
+    }
+
+    // allocate it if not already
+    if (!cTexture) {
+        cTexture = Allocate<CTexture>();
+    }
+
+    cTexture->Read(buffer);
+
+    return true;
+}
+
 bool CTileset::Read(FILE *fp)
 {
     tile2d_header_t header;
-    tile2d_info_t info;
+    tile2d_info_t *info;
+    char *buf, *cbuf;
+    uint64_t buflen;
 
     memset(&header, 0, sizeof(header));
 
     SafeRead(&header, sizeof(header), fp);
     
-    if (header.magic != TILESET_MAGIC) {
+    if (header.magic != TILE2D_MAGIC) {
         return false;
     }
-    if (header.version != TILESET_VERSION) {
+    if (header.version != TILE2D_VERSION) {
         return false;
     }
 
-    if (!cTexture)
+    info = &header.info;
+
+    //
+    // load the sprites
+    //
+    
+    // compression?
+    if (info->compression != COMPRESS_NONE) {
+        cbuf = (char *)Malloc(info->compressedSize);
+        SafeRead(cbuf, info->compressedSize, fp);
+        buf = Decompress(cbuf, info->compressedSize, &buflen, info->compression);
+
+        if (buflen % sizeof(tile2d_sprite_t)) {
+            Error("CTileset::Read: odd lump size for sprites");
+        }
+
+        sprites.resize(buflen / sizeof(tile2d_sprite_t));
+        memcpy(sprites.data(), buf, buflen);
+
+        Free(buf);
+        Free(cbuf);
+    }
+    // otherwise just read
+    else {
+        sprites.resize(info->numTiles);
+        SafeRead(sprites.data(), sprites.size() * sizeof(tile2d_sprite_t), fp);
+    }
+
+    //
+    // load the texture
+    //
+
+    // is there a texture?
+    if (!info->hasTexture) { // this isn't best practice, but just warn the user
+        Printf("WARNING: no texture found in " TILESET_FILE_EXT " file, this is only allowed in this map editor, not in the game");
+        return true;
+    }
+
+    // allocate it if not already
+    if (!cTexture) {
         cTexture = Allocate<CTexture>();
+    }
 
-    CopyLump((void *)&info, sizeof(info), header.lumps, TILESET_LUMP_INFO, fp);
-    CopyLump<tile2d_sprite_t>(sprites, sizeof(tile2d_sprite_t), header.lumps, TILESET_LUMP_SPRITES, fp);
-    CopyLump<byte>(cTexture->GetBuffer(), sizeof(byte), header.lumps, TILESET_LUMP_TEXTURE, fp);
+    cTexture->Read(fp);
 
     return true;
 }
@@ -175,42 +286,46 @@ bool CTileset::Read(FILE *fp)
 bool CTileset::Write(FILE *fp) const
 {
     tile2d_header_t header;
-    tile2d_info_t info;
-    uint64_t pos;
+    tile2d_info_t *info;
+    char *buf;
+    uint64_t buflen;
     const uint64_t texSize = cTexture->GetWidth() * cTexture->GetHeight() * cTexture->GetChannels();
 
     memset(&header, 0, sizeof(header));
+    header.magic = TILE2D_MAGIC;
+    header.version = TILE2D_VERSION;
 
-    pos = ftell(fp);
+    info = &header.info;
+    info->numTiles = numTiles;
+    info->tileHeight = tileHeight;
+    info->tileWidth = tileWidth;
+    info->compressedSize = 0;
+    info->hasTexture = cTexture != NULL ? 1 : 0;
 
-    // overwritten later
-    SafeWrite(&header, sizeof(header), fp);
+    if (cTexture) {
+        N_strncpyz(info->texture, GetFilename(cTexture->GetName().c_str()), sizeof(info->texture));
+    }
 
-    header.magic = TILESET_MAGIC;
-    header.version = TILESET_VERSION;
+    // compression enabled?
+    if (parm_compression != COMPRESS_NONE) {
+        buf = Compress((void *)sprites.data(), sprites.size() * sizeof(tile2d_sprite_t), &buflen);
 
-    info.numTiles = numTiles;
-    info.tileHeight = tileHeight;
-    info.tileWidth = tileWidth;
-    info.width = width;
-    info.height = height;
-    info.magfilter = cTexture->GetMagFilter();
-    info.minfilter = cTexture->GetMinFilter();
-    info.wrapS = cTexture->GetWrapS();
-    info.wrapT = cTexture->GetWrapT();
-
-    AddLump(&info, sizeof(info), header.lumps, TILESET_LUMP_INFO, fp);
-    AddLump(sprites.data(), sizeof(tile2d_sprite_t) * sprites.size(), header.lumps, TILESET_LUMP_SPRITES, fp);
-    if (!cTexture) {
-        byte buf[1];
-        AddLump(buf, sizeof(byte), header.lumps, TILESET_LUMP_TEXTURE, fp);
+        info->compressedSize = buflen;
+        info->compression = parm_compression;
     }
     else {
-        AddLump(cTexture->GetBuffer().data(), sizeof(byte) * texSize, header.lumps, TILESET_LUMP_TEXTURE, fp);
+        buf = (char *)sprites.data();
+        buflen = sprites.size() * sizeof(tile2d_sprite_t);
     }
 
-    fseek(fp, pos, SEEK_SET);
     SafeWrite(&header, sizeof(header), fp);
+    SafeWrite(buf, buflen, fp);
+    if (cTexture) {
+        cTexture->Write(fp);
+    }
+    if (parm_compression != COMPRESS_NONE) {
+        Free(buf);
+    }
 
     return true;
 }

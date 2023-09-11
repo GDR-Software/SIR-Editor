@@ -1,10 +1,14 @@
 #include "Common.hpp"
-#include "GUI.h"
-#include "Editor.h"
+#ifndef BMFC
 #ifdef USE_ZONE
 #include "Zone.cpp"
 #else
 #include "Heap.cpp"
+#endif
+#else
+#include <GL/gl.h>
+#define Malloc malloc
+#define Free free
 #endif
 #include <bzlib.h>
 #include <zlib.h>
@@ -12,10 +16,12 @@
 #include <backtrace.h>
 #include <cxxabi.h> // for demangling C++ symbols
 
+#ifndef BMFC
 int parm_saveJsonMaps;
 int parm_saveJsonTilesets;
 int parm_useInternalTilesets;
 int parm_useInternalMaps;
+#endif
 int parm_compression;
 
 #ifdef _WIN32
@@ -113,7 +119,7 @@ static void do_backtrace(void)
 	}
 }
 
-
+#ifndef BMFC
 void* operator new[](size_t size, size_t alignment, size_t alignmentOffset, const char* pName, int flags, unsigned debugFlags, const char* file, int line)
 {
 #ifdef USE_ZONE
@@ -122,6 +128,7 @@ void* operator new[](size_t size, size_t alignment, size_t alignmentOffset, cons
 	return Mem_Alloc(size);
 #endif
 }
+#endif
 
 uint64_t LoadFile(const char *filename, void **buffer)
 {
@@ -129,7 +136,11 @@ uint64_t LoadFile(const char *filename, void **buffer)
 	uint64_t length;
 	FILE *fp;
 
+#ifndef BMFC
 	fp = SafeOpenRead(BuildOSPath(Editor::GetPWD(), "Data/", filename));
+#else
+	fp = SafeOpenRead(filename);
+#endif
 
 	length = FileLength(fp);
 	buf = Malloc(length);
@@ -210,11 +221,20 @@ void Error(const char *fmt, ...)
 
 	do_backtrace();
 
-	GUI::Print("ERROR: %s", buffer);
+#ifndef BMFC
+	GUI::Print("\n********** ERROR **********");
+	GUI::Print("%s", buffer);
 	GUI::Print("Exiting app (code : -1)");
 	
-    spdlog::critical("ERROR: {}", buffer);
+    spdlog::critical("\n********** ERROR **********");
+    spdlog::critical("{}", buffer);
     spdlog::critical("Exiting app (code : -1)");
+#else
+	fprintf(stderr, "\n********** ERROR **********\n");
+	fprintf(stderr, "%s\n", buffer);
+	fprintf(stderr, "Exiting app (code : -1)\n");
+#endif
+	fflush(NULL);
 
     exit(-1);
 }
@@ -228,8 +248,12 @@ void Printf(const char *fmt, ...)
     vsnprintf(buffer, sizeof(buffer), fmt, argptr);
     va_end(argptr);
 
+#ifndef BMFC
     spdlog::info("{}", buffer);
 	GUI::Print("%s", buffer);
+#else
+	fprintf(stdout, "%s\n", buffer);
+#endif
 }
 
 static inline const char *bzip2_strerror(int err)
@@ -451,10 +475,12 @@ char *Decompress(void *buf, uint64_t buflen, uint64_t *outlen, int compression)
 	return (char *)buf;
 }
 
+#ifndef BMFC
 bool IsAbsolutePath(const string_t& path)
 {
 	return strrchr(path.c_str(), PATH_SEP) == NULL;
 }
+#endif
 
 int GetParm(const char *parm)
 {
@@ -948,6 +974,7 @@ int N_stricmp( const char *s1, const char *s2 )
 	return 0;
 }
 
+#ifndef BMFC
 char* BuildOSPath(const path_t& curPath, const string_t& gamepath, const char *npath)
 {
 	static char ospath[MAX_OSPATH*2+1];
@@ -975,7 +1002,7 @@ void *SafeMalloc(size_t size)
 
 	return p;
 }
-
+#endif
 
 void SafeWrite(const void *buffer, size_t size, FILE *fp)
 {

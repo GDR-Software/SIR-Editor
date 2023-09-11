@@ -99,16 +99,85 @@ bool CTexture::Load(const string_t& path)
     return true;
 }
 
+void CTexture::Read(const byte *buffer)
+{
+    const tex2d_t *tex;
+    const byte *image;
+
+    tex = (const tex2d_t *)buffer;
+
+    if (tex->ident != TEX2D_IDENT)
+        return;
+    if (tex->version != TEX2D_VERSION)
+        return;
+    
+    filebuffer.clear();
+    imagebuffer.clear();
+
+    image = (const byte *)(tex + 1);
+
+    if (!LoadImage(image, tex->fileSize))
+        return;
+}
+
+void CTexture::ReInit(void)
+{
+    Printf("Reinitializing OpenGL texture parameters...");
+    Bind();
+    if (multisampling) {
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, format, width, height, GL_FALSE);
+    }
+    else {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minfilter);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magfilter);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, channels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, imagebuffer.data());
+    }
+    Unbind();
+}
+
+bool CTexture::LoadImage(const byte *buffer, uint64_t buflen)
+{
+    stbi_uc *image;
+
+    image = stbi_load_from_memory((const stbi_uc *)buffer, buflen, (int *)&width, (int *)&height, (int *)&channels, 4);
+    if (!image) {
+        Printf("CTexture::Load: stbi_load_from_memory() failed, stbimage error: %s", stbi_failure_reason());
+        return false;
+    }
+    
+    Printf("Generating OpenGL texture...");
+    if (!id)
+        glGenTextures(1, (GLuint *)&id);
+    
+    ReInit();
+
+    return true;
+}
+
 bool CTexture::LoadImage(const string_t& path)
 {
     stbi_uc *image;
     int tmpwidth, tmpheight, tmpchannels;
+    FILE *fp;
 
     Printf("Loading texture file '%s'", path.c_str());
 
+    if (!FileExists(path.c_str())) {
+        Printf("CTexture::Load: bad texture path '%s', file doesn't exist", path.c_str());
+        return false;
+    }
+
+    fp = SafeOpenRead(path.c_str());
+    filebuffer.resize(FileLength(fp));
+    SafeRead(filebuffer.data(), filebuffer.size(), fp);
+    fclose(fp);
+
     image = stbi_load(path.c_str(), &tmpwidth, &tmpheight, &tmpchannels, 4);
     if (!image) {
-        Printf("Texture::Load: stbi_load(%s) failed, stbimage error: %s", path.c_str(), stbi_failure_reason());
+        Printf("CTexture::Load: stbi_load(%s) failed, stbimage error: %s", path.c_str(), stbi_failure_reason());
         return false;
     }
 
@@ -145,41 +214,33 @@ bool CTexture::LoadImage(const string_t& path)
 
 bool CTexture::Write(FILE *fp) const
 {
-    tex2d_header_t header;
-    tex2d_info_t info;
-    uint64_t pos;
+    tex2d_t file;
     char *outbuf;
     uint64_t outlen;
 
-    memset(&header, 0, sizeof(header));
+    memset(&file, 0, sizeof(file));
 
     outbuf = Compress((void *)imagebuffer.data(), imagebuffer.size(), &outlen);
 
-    header.magic = TEXTURE_MAGIC;
-    header.version = TEXTURE_VERSION;
+    file.ident = TEX2D_IDENT;
+    file.version = TEX2D_VERSION;
+    file.channels = channels;
+    file.format = format;
+    file.height = height;
+    file.width = width;
+    file.magfilter = magfilter;
+    file.minfilter = minfilter;
+    file.wrapS = wrapS;
+    file.wrapT = wrapT;
+    file.multisampling = multisampling;
+    file.compression = parm_compression;
+    file.compressedSize = outlen;
+    file.fileSize = filebuffer.size();
+    N_strncpyz(file.name, GetFilename(name.c_str()), sizeof(file.name));
 
-    info.channels = channels;
-    info.format = format;
-    info.height = height;
-    info.width = width;
-    info.magfilter = magfilter;
-    info.minfilter = minfilter;
-    info.wrapS = wrapS;
-    info.wrapT = wrapT;
-    info.multisampling = multisampling;
-    info.compression = parm_compression;
-    info.compressedSize = outlen;
-
-    pos = ftell(fp);
-
-    // overwritten later
-    SafeWrite(&header, sizeof(header), fp);
-
-    AddLump(&info, sizeof(info), header.lumps, TEX_LUMP_INFO, fp);
-    AddLump(outbuf, info.compressedSize, header.lumps, TEX_LUMP_BUF, fp);
-
-    fseek(fp, pos, SEEK_SET);
-    SafeWrite(&header, sizeof(header), fp);
+    SafeWrite(&file, sizeof(file), fp);
+    SafeWrite(outbuf, outlen, fp);
+    SafeWrite(filebuffer.data(), filebuffer.size(), fp); // write the raw image data
 
     Free(outbuf);
 
@@ -188,31 +249,35 @@ bool CTexture::Write(FILE *fp) const
 
 bool CTexture::Read(FILE *fp)
 {
-    tex2d_header_t header;
-    tex2d_info_t info;
-    uint64_t pos;
+    tex2d_t file;
     char *inbuf, *cBuf;
     uint64_t inlen;
 
-    memset(&header, 0, sizeof(header));
+    memset(&file, 0, sizeof(file));
 
-    SafeRead(&header, sizeof(header), fp);
+    SafeRead(&file, sizeof(file), fp);
 
-    if (header.magic != TEXTURE_MAGIC) {
-        Printf("ERROR: bad tex2d header magic: %lu", header.magic);
+    if (file.ident != TEX2D_IDENT) {
+        Printf("ERROR: bad tex2d header indentifier: %lu", file.ident);
         return false;
     }
-    if (header.version != TEXTURE_VERSION) {
-        Printf("ERROR: bad tex2d header version: %lu", header.version);
+    if (file.version != TEX2D_VERSION) {
+        Printf("ERROR: bad tex2d header version: %lu", file.version);
         return false;
     }
 
-    CopyLump((void *)&info, sizeof(tex2d_info_t), header.lumps, TEX_LUMP_INFO, fp);
-    CopyLump((void **)&cBuf, sizeof(byte), header.lumps, TEX_LUMP_BUF, fp);
+    cBuf = (char *)Malloc(file.compressedSize);
+    SafeRead(cBuf, file.compressedSize, fp);
 
-    inbuf = Decompress(cBuf, info.compressedSize, &inlen, info.compression);
+    inbuf = Decompress(cBuf, file.compressedSize, &inlen, file.compression);
+    
     imagebuffer.clear();
     imagebuffer.insert(imagebuffer.end(), inbuf, inbuf + inlen);
+    filebuffer.clear();
+    filebuffer.resize(file.fileSize);
+
+    SafeRead(filebuffer.data(), filebuffer.size(), fp);
+
     Free(cBuf);
 
     return true;
