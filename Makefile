@@ -16,22 +16,13 @@ DEPS=\
 
 OBJS=\
 	$(O)/main.o \
-	$(O)/Common.o \
-	$(O)/GUI.o \
-	$(O)/Map.o \
-	$(O)/Texture.o \
-	$(O)/Tileset.o \
-	$(O)/MapFile.o \
-	$(O)/Editor.o \
-	$(O)/Project.o \
-	$(O)/Events.o \
-	$(O)/ProjectManager.o \
-	$(O)/MapManager.o \
-	$(O)/TilesetManager.o \
-	$(O)/TextureManager.o \
-	$(O)/EditorTool.o \
-	$(O)/EditorManager.o \
-	$(O)/Command.o
+	$(O)/gln.o \
+	$(O)/gui.o \
+	$(O)/editor.o \
+	$(O)/events.o \
+	$(O)/command.o \
+	$(O)/Heap.o \
+	$(O)/ngl_proc.o \
 
 $(O)/%.o: src/%.cpp
 	$(COMPILE)
