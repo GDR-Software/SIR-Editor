@@ -3,7 +3,7 @@ CFLAGS	= -Og -g -I.
 EXE		= mapeditor
 O		= obj
 
-COMPILE=$(CC) $(CFLAGS) -Isrc -I/usr/local/include/spdlog/ -IDependencies/include -IDependencies/ -o $@ -c $<
+COMPILE=$(CC) $(CFLAGS) -Isrc -I/usr/local/include/spdlog/ -IDependencies/include -IDependencies/ -o $@ -c $< -Iinclude
 
 DEPS=\
 	$(O)/imgui_tables.o \
@@ -19,6 +19,7 @@ OBJS=\
 	$(O)/gln.o \
 	$(O)/gui.o \
 	$(O)/editor.o \
+	$(O)/stream.o \
 	$(O)/events.o \
 	$(O)/command.o \
 	$(O)/Heap.o \

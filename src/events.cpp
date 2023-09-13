@@ -326,7 +326,7 @@ uint64_t CEventQueue::EventLoop(void)
 			WindowEvent(ev.evValue);
 			break;
 		case SE_MOUSE:
-			MouseEvent(ev.evValue, ev.evValue2);
+//			MouseEvent(ev.evValue, ev.evValue2);
 			break;
 		case SE_CONSOLE:
 			if (editor->mConsoleActive)

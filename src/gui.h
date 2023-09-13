@@ -11,26 +11,44 @@ struct Vertex
     float empty;
 };
 
+class CInput
+{
+public:
+    Str mName;
+    Str mBuf;
+    bool mModified;
+
+    CInput(void) { }
+    CInput(const char *name, uint64_t bufLen)
+        : mName{ name }, mModified{ false }
+    {
+        mBuf.GetBufferSetLength(bufLen);
+    }
+    
+};
+
 class CMenuItem
 {
 public:
-    const char *mName;
-    const char *mShortcut;
+    Str mName;
+    Str mShortcut;
     bool mActive;
 
+    CMenuItem(void) { }
     CMenuItem(const char *name)
-        : mName{ name }, mShortcut{ NULL }, mActive{ false } { }
+        : mName{ name }, mShortcut{ (const char *)NULL }, mActive{ false } { }
     ~CMenuItem() { }
 };
 
 class CMenu
 {
 public:
-    const char *mName;
+    Str mName;
     bool mActive;
-    eastl::vector<CMenu *> mChildList;
-    eastl::unordered_map<const char *, CMenuItem> mItemList;
+    std::vector<CMenu> mChildList;
+    std::vector<CMenuItem> mItemList;
 
+    CMenu(void) { }
     CMenu(const char *name)
         : mName{ name }, mActive{ false }, mChildList{}, mItemList{} { }
     ~CMenu() { }
@@ -54,7 +72,7 @@ public:
     uint32_t *mIndices;
 
     char mInputBuf[4096];
-    eastl::vector<char> mConbuffer;
+    std::vector<char> mConbuffer;
 
     CMenu mMainMenu;
     eastl::unordered_map<const char *, CMenu> mMenuList;
@@ -70,11 +88,11 @@ public:
 
 extern Window *gui;
 
-CMenu* GUI_PushMainMenu_Child(const char *name);
-CMenuItem* GUI_PushMainMenu_Item(const char *name);
+CMenu* GUI_PushMainMenu_Child(const Str& name);
+CMenuItem* GUI_PushMainMenu_Item(const Str& name);
 
-CMenu* GUI_PushMenu(const char *name);
-CMenu* GUI_PushMenuChild(CMenu *parent, const char *childName);
-CMenuItem* GUI_PushMenuItem(CMenu *menu, const char *itemName);
+CMenu* GUI_PushMenu(const Str& name);
+CMenu* GUI_PushMenu_Child(CMenu *parent, const Str& childName);
+CMenuItem* GUI_PushMenu_Item(CMenu *menu, const Str& itemName);
 
 #endif

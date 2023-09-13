@@ -18,8 +18,8 @@ public:
     IDataStream(void);
     virtual ~IDataStream();
 
-    virtual uint32_t IncRef(void) = 0;      ///< Increment the number of references to this object
-    virtual uint32_t DecRef(void) = 0;      ///< Decrement the reference count
+    virtual void IncRef(void) = 0;      ///< Increment the number of references to this object
+    virtual void DecRef(void) = 0;      ///< Decrement the reference count
 
     virtual uint64_t GetPosition() const = 0;
     virtual uint64_t Seek( uint64_t lOff, int nFrom ) = 0;

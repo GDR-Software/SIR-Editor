@@ -23,6 +23,25 @@ struct heap_allocator_template
     typedef T value_type;
 
     inline T* allocate(size_t n) const
+    { return static_cast<T *>(GetMemory(n)); }
+	inline T* allocate(size_t& n, size_t& alignment, size_t& offset) const
+    { return static_cast<T *>(GetMemory(n)); }
+	inline T* allocate(size_t n, size_t alignment, size_t alignmentOffset, int flags) const
+    { return static_cast<T *>(GetMemory(n)); }
+	inline void deallocate(void *p, size_t) const noexcept
+    { FreeMemory(p); }
+};
+
+template<typename T>
+struct heap_allocator_template
+{
+    heap_allocator_template(const char* _name = "allocator") noexcept { }
+    template<typename U>
+	heap_allocator_template(const heap_allocator_template<U> &) noexcept { }
+
+    typedef T value_type;
+
+    inline T* allocate(size_t n) const
     {
     #ifdef USE_ZONE
         return static_cast<T *>(Z_Malloc(n, TAG_STATIC, NULL, "allocator"));

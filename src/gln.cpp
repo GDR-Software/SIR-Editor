@@ -94,6 +94,17 @@ static void do_backtrace(void)
 	}
 }
 
+void assert_failure(const char *expr, const char *file, const char *func, unsigned line)
+{
+	Error(
+		"ImGui Assertion Failure:\n"
+		"\tExpression: %s\n"
+		"\tFile: %s\n"
+		"\tFunction: %s\n"
+		"\tLine: %u"
+	, expr, file, func, line);
+}
+
 // used by EASTL
 // needs to be defined by user
 void* operator new[](size_t size, size_t alignment, size_t alignmentOffset, const char* pName, int flags, unsigned debugFlags, const char* file, int line)
@@ -167,6 +178,28 @@ float LittleFloat(float f)
 	out.i = LittleInt(in->i);
 
 	return out.f;
+}
+
+bool LoadJSON(json& data, const Str& path)
+{
+	std::ifstream file;
+	if (!FileExists(path.GetBuffer())) {
+		Printf("WARNING: failed to load json file '%s', file doesn't exist", path.GetBuffer());
+		return false;
+	}
+	file.open(path.GetBuffer(), std::ios::in);
+	if (!file.is_open()) {
+		Error("[LoadJSON] failed to open json file '%s'", path.GetBuffer());
+	}
+	try {
+		data = json::parse(file);
+	} catch (const json::exception& e) {
+		Printf("ERROR: failed to load json file '%s'. nlohmann::json::exception =>\n\tid: %i\n\tstring: %s", path.GetBuffer(), e.id, e.what());
+		file.close();
+		return false;
+	}
+	file.close();
+	return true;
 }
 
 void Exit(void)
@@ -456,11 +489,23 @@ bool IsAbsolutePath(const char *path)
 	return strrchr(path, PATH_SEP) == NULL;
 }
 
+char *CopyString(const char *s)
+{
+	if (!s) {
+		s = "";
+	}
+	return strcpy((char *)GetMemory(strlen(s) + 1), s);
+}
+
 void *GetMemory(uint64_t size)
 {
 	void *buf;
 
+#ifdef BMFC
 	buf = malloc(size);
+#else
+	buf = Mem_Alloc(size);
+#endif
 	if (!buf) {
 		Error("GetMemory: out of memory!");
 	}
@@ -472,7 +517,12 @@ void *GetResizedMemory(void *ptr, uint64_t nsize)
 {
 	void *buf;
 
+#ifdef BMFC
 	buf = realloc(ptr, nsize);
+#else
+	extern void *Mem_Realloc(void *ptr, uint64_t nsize);
+	buf = Mem_Realloc(ptr, nsize);
+#endif
 	if (!buf) {
 		Error("GetResizedMemory: out of memory!");
 	}
@@ -483,6 +533,15 @@ void *GetResizedMemory(void *ptr, uint64_t nsize)
 void *GetClearedMemory(uint64_t size)
 {
 	return memset(GetMemory(size), 0, size);
+}
+
+void FreeMemory(void *ptr)
+{
+#ifdef BMFC
+	free(ptr);
+#else
+	Mem_Free(ptr);
+#endif
 }
 
 int GetParm(const char *parm)

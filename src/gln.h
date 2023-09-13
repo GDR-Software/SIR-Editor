@@ -12,44 +12,50 @@
 #include <SDL2/SDL_opengl.h>
 #include <memory>
 #include <string>
+#include <list>
 #include <fstream>
 #include <unordered_map>
 #include <EASTL/string.h>
 #include <EASTL/unordered_map.h>
 #include <EASTL/array.h>
 #include <EASTL/vector.h>
-#include <nlohmann/json.hpp>
 #include <glm/glm.hpp>
 #include "imgui.h"
 
+void *GetResizedMemory(void *ptr, uint64_t nsize);
+void *GetClearedMemory(uint64_t size);
+void *GetMemory(uint64_t size);
+void FreeMemory(void *ptr);
+
+template<typename T>
+class heap_allocator_template
+{
+public:
+    heap_allocator_template(const char* _name = "allocator") noexcept { }
+    template<typename U>
+	heap_allocator_template(const heap_allocator_template<U> &) noexcept { }
+    ~heap_allocator_template() { }
+
+    typedef T value_type;
+
+    inline T* allocate(size_t n) const
+    { return static_cast<T *>(GetMemory(n)); }
+	inline T* allocate(size_t& n, size_t& alignment, size_t& offset) const
+    { return static_cast<T *>(GetMemory(n)); }
+	inline T* allocate(size_t n, size_t alignment, size_t alignmentOffset, int flags) const
+    { return static_cast<T *>(GetMemory(n)); }
+	inline void deallocate(void *p, size_t) const noexcept
+    { FreeMemory(p); }
+};
+
+#include "str.h"
+#include <nlohmann/json.hpp>
 #include "defs.h"
-#include "gln_files.h"
-#include "ngl.h"
-#include "command.h"
-#include "events.h"
-#include "gui.h"
-#include "editor.h"
 
 void Mem_Init(void);
 void Mem_Shutdown(void);
 void *Mem_Alloc(const uint32_t size);
 void Mem_Free(void *ptr);
-
-template<typename T>
-inline T *Allocate(void)
-{ return static_cast<T *>(Mem_Alloc(sizeof(T))); }
-template<typename T, typename... Args>
-inline T *Allocate(Args&&... args)
-{
-    T *mem = static_cast<T *>(Mem_Alloc(sizeof(T)));
-    ::new (mem) T(eastl::forward<Args>(args)...);
-    return mem;
-}
-
-/*
-All the random shit I pulled from GtkRadiant into this project
-*/
-#include "file.h"
 
 #define PAD(base, alignment) (((base)+(alignment)-1) & ~((alignment)-1))
 template<typename type, typename alignment>
@@ -60,11 +66,7 @@ void Error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void Printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 const char *va(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 uint64_t LoadFile(const char *filename, void **buffer);
-bool LoadJSON(json& data, const std::string& path);
-void *GetResizedMemory(void *ptr, uint64_t nsize);
-void *GetClearedMemory(uint64_t size);
-void *GetMemory(uint64_t size);
-void FreeMemory(void *ptr);
+bool LoadJSON(json& data, const Str& path);
 void Exit(void);
 int GetParm(const char *parm);
 bool N_strcat(char *dest, size_t size, const char *src);
@@ -107,6 +109,40 @@ bool IsAbsolutePath(const char *path);
 inline const char *GetAbsolutePath(const char *path)
 { return IsAbsolutePath(path) ? path : GetFilename(path); }
 char* BuildOSPath(const char *curPath, const char *gamepath, const char *npath);
+
+template<typename T>
+inline T *Allocate(void)
+{ return static_cast<T *>(GetMemory(sizeof(T))); }
+template<typename T, typename... Args>
+inline T *Allocate(Args&&... args)
+{
+    T *mem = static_cast<T *>(GetMemory(sizeof(T)));
+    ::new (mem) T(eastl::forward<Args>(args)...);
+    return mem;
+}
+
+template<typename T>
+using list_t = std::list<T, heap_allocator_template<T>>;
+template<typename T>
+using vector_t = std::vector<T, heap_allocator_template<T>>;
+
+/*
+All the random shit I pulled from GtkRadiant into this project
+*/
+#include "idatastream.h"
+#include "stream.h"
+#include "list.h"
+
+/*
+Editor-specific stuff
+*/
+#include "gln_files.h"
+#include "ngl.h"
+#include "command.h"
+#include "events.h"
+#include "gui.h"
+#include "preferences.h"
+#include "editor.h"
 
 extern int parm_compression;
 extern int myargc;

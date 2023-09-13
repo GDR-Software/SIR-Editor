@@ -370,6 +370,48 @@ void Window::BeginFrame(void)
     ImGui_ImplOpenGL3_NewFrame();
 }
 
+static void GUI_DrawMenuItems(std::vector<CMenuItem>& itemList)
+{
+    for (auto& it : itemList) {
+        if (ImGui::MenuItem(it.mName.GetBuffer(), it.mShortcut.GetBuffer())) {
+            it.mActive = true;
+        }
+    }
+}
+
+static void GUI_DrawMenuChildren(std::vector<CMenu>& childList)
+{
+    for (auto& it : childList) {
+        if (ImGui::BeginMenu(it.mName.GetBuffer())) {
+            if (it.mItemList.size()) {
+                GUI_DrawMenuItems(it.mItemList);
+            }
+            it.mActive = true;
+            ImGui::EndMenu();
+        }
+    }
+}
+
+static void GUI_DrawMenus(void)
+{
+    if (ImGui::BeginMainMenuBar()) {
+        GUI_DrawMenuChildren(gui->mMainMenu.mChildList);
+        ImGui::EndMainMenuBar();
+    }
+}
+
+void Window::Print(const char *fmt, ...)
+{
+    va_list argptr;
+    char msg[4096];
+    int length;
+
+    va_start(argptr, fmt);
+    length = vsnprintf(msg, sizeof(msg), fmt, argptr);
+    va_end(argptr);
+
+    gui->mConbuffer.insert(gui->mConbuffer.end(), msg, msg + length);
+}
 
 void Window::EndFrame(void)
 {
@@ -401,22 +443,53 @@ void Window::EndFrame(void)
     SDL_GL_SwapWindow(mWindow);
 }
 
-CMenu* GUI_PushMainMenu_Child(const char *name)
+CMenu* GUI_PushMainMenu_Child(const Str& name)
 {
     for (uint64_t i = 0; i < gui->mMainMenu.mChildList.size(); ++i) {
-        if (!N_stricmp(name, gui->mMainMenu.mChildList[i]->mName))
-            Error("[GUI_PushMainMenu_Child] child menu '%s' added twice", name);
+        if (gui->mMainMenu.mChildList[i].mName == name)
+            Error("[GUI_PushMainMenu_Child] child menu '%s' added twice", name.GetBuffer());
     }
     
-    gui->mMainMenu.mChildList.emplace_back(CMenu( name ));
-    return *gui->mMainMenu.mChildList.end();
+    gui->mMainMenu.mChildList.emplace_back(CMenu( name.GetBuffer() ));
+    return &gui->mMainMenu.mChildList.back();
 }
 
-CMenuItem* GUI_PushMainMenu_Item(const char *name)
+CMenuItem* GUI_PushMainMenu_Item(const Str& name)
 {
+    for (uint64_t i = 0; i < gui->mMainMenu.mItemList.size(); ++i) {
+        if (gui->mMainMenu.mItemList[i].mName == name)
+            Error("[GUI_PushMainMenu_Item] menu item '%s' added twice", name.GetBuffer());
+    }
     
+    gui->mMainMenu.mItemList.emplace_back(CMenuItem( name.GetBuffer() ));
+    return &gui->mMainMenu.mItemList.back();
 }
 
-CMenu* GUI_PushMenu(const char *name);
-CMenu* GUI_PushMenuChild(CMenu *parent, const char *childName);
-CMenuItem* GUI_PushMenuItem(CMenu *menu, const char *itemName);
+CMenu* GUI_PushMenu(const Str& name)
+{
+    if (gui->mMenuList.find(name.GetBuffer()) != gui->mMenuList.end())
+        Error("[GUI_PushMenu] menu item '%s' added twice", name.GetBuffer());
+    
+    gui->mMenuList.try_emplace(name.GetBuffer(), CMenu( name.GetBuffer() ));
+    return &gui->mMenuList.at(name.GetBuffer());
+}
+
+CMenu* GUI_PushMenu_Child(CMenu *parent, const Str& childName)
+{
+    for (uint64_t i = 0; i < parent->mChildList.size(); ++i) {
+        if (parent->mChildList[i].mName == childName)
+            Error("[GUI_PushMenu_Child] child menu '%s' added twice to '%s'", childName.GetBuffer(), parent->mName.GetBuffer());
+    }
+    parent->mChildList.emplace_back(CMenu( childName.GetBuffer() ));
+    return &parent->mChildList.back();
+}
+
+CMenuItem* GUI_PushMenu_Item(CMenu *menu, const Str& itemName)
+{
+    for (uint64_t i = 0; i < menu->mItemList.size(); ++i) {
+        if (menu->mChildList[i].mName == itemName)
+            Error("[GUI_PushMenu_Item] menu item '%s' added twice to '%s'", itemName.GetBuffer(), menu->mName.GetBuffer());
+    }
+    menu->mItemList.emplace_back(CMenuItem( itemName.GetBuffer() ));
+    return &menu->mItemList.back();
+}

@@ -53,8 +53,6 @@ private:
     void PushEvent(const sysEvent_t *event);
     void QueueEvent(sysEventType_t evType, int evValue, int evValue2, uint32_t ptrLength, void *ptr);
     void SendKeyEvents(void);
-    void KeyEvent(uint32_t key, bool down);
-    void MouseEvent(uint32_t x, uint32_t y);
 
     std::array<sysEvent_t, MAX_EVENT_QUEUE> mEventQueue;
     std::array<sysEvent_t, MAX_PUSHED_EVENTS> mPushedEvents;
