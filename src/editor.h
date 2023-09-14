@@ -8,8 +8,8 @@
 class CFileEntry
 {
 public:
-	Str mPath;
-	std::list<CFileEntry> mDirList;
+	string_t mPath;
+	list_t<CFileEntry> mDirList;
 	const bool mIsDir;
 
 	CFileEntry(const std::filesystem::path& path, bool isDir)
@@ -20,8 +20,8 @@ public:
 class CPopup
 {
 public:
-	Str mName;
-	Str mMsg;
+	string_t mName;
+	string_t mMsg;
 	bool mOpen;
 
 	CPopup(const char *name, const char *msg)
@@ -40,13 +40,10 @@ public:
 	void Draw(void);
 	void ReloadFileCache(void);
 
-	std::list<CFileEntry> mFileCache;
-	std::list<CPopup> mPopups;
+	list_t<CFileEntry> mFileCache;
+	list_t<CPopup> mPopups;
 	bool mConsoleActive;
 	CGameConfig *mConfig;
-
-	CMenu *mMenu_File;
-	CMenu *mMenu_Edit;
 };
 
 extern CEditor *editor;

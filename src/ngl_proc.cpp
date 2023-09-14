@@ -28,6 +28,6 @@ void load_gl_procs(NGLloadproc load)
     NGL_VAO_Procs
     NGL_Buffer_Procs
     NGL_Texture_Procs
-    // don't load any extension procs here
+    NGL_BufferARB_Procs
 }
 #undef NGL

@@ -7,8 +7,6 @@
 #include <stb/stb_sprintf.h>
 #include "gui.h"
 #include <glm/gtc/matrix_transform.hpp>
-#include "imgui_impl_opengl3.h"
-#include "imgui_impl_sdl2.h"
 
 #define WINDOW_TITLE "GLNomad Level Editor"
 #define WINDOW_WIDTH 1920
@@ -29,13 +27,13 @@ static void ImGui_MemFree(void *ptr, void *)
 static GLuint vaoId, vboId, shaderId;
 static GLint vpmId;
 
-static void MakeViewMatrix(void)
+static void MakeViewMatrix(Window *context = gui)
 {
-    glm::mat4 transpose = glm::translate(glm::mat4(1.0f), gui->mCameraPos)
-                        * glm::scale(glm::mat4(1.0f), glm::vec3(gui->mCameraZoom))
-                        * glm::rotate(glm::mat4(1.0f), glm::radians(gui->mCameraRotation), glm::vec3(0, 0, 1));
-    gui->mViewMatrix = glm::inverse(transpose);
-    gui->mViewProjection = gui->mProjection * gui->mViewMatrix;
+    glm::mat4 transpose = glm::translate(glm::mat4(1.0f), context->mCameraPos)
+                        * glm::scale(glm::mat4(1.0f), glm::vec3(context->mCameraZoom))
+                        * glm::rotate(glm::mat4(1.0f), glm::radians(context->mCameraRotation), glm::vec3(0, 0, 1));
+    context->mViewMatrix = glm::inverse(transpose);
+    context->mViewProjection = context->mProjection * context->mViewMatrix;
 }
 
 static void CheckProgram(void)
@@ -116,10 +114,8 @@ static void InitGLObjects(void)
     "\n"
     "uniform mat4 u_ViewProjection;\n"
     "out vec2 v_TexCoords;\n"
-    "out float v_Empty;\n"
     "\n"
     "void main() {\n"
-    "   v_Empty = a_Empty;\n"
     "   v_TexCoords = a_TexCoords;\n"
     "   gl_Position = u_ViewProjection * vec4(a_Position, 1.0);\n"
     "}\n";
@@ -132,12 +128,6 @@ static void InitGLObjects(void)
     "\n"
     "void main() {\n"
     "   a_Color = texture2D(u_Texture, v_TexCoords);\n"
-    "   if (v_Empty != 0.0) {\n"
-    "       a_Color = vec4(0.0);\n"
-    "   }\n"
-    "   if (u_Selected) {\n"
-    "       a_Color.a += 10.0;\n"
-    "   }\n"
     "}\n";
 
     Printf("[Window::InitGLObjects] Allocating OpenGL buffer objects...");
@@ -154,9 +144,6 @@ static void InitGLObjects(void)
 
     nglEnableVertexAttribArray(1);
     nglVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, texcoords));
-
-    nglEnableVertexAttribArray(2);
-    nglVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, empty));
 
     nglBindBuffer(GL_ARRAY_BUFFER_ARB, 0);
     nglBindVertexArray(0);
@@ -214,6 +201,7 @@ Window::Window(void)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
     SDL_GL_SetSwapInterval(-1);
 
+    Printf("[Window::Init] loading ngl procs");
     load_gl_procs(SDL_GL_GetProcAddress);
     
     mVertices = (Vertex *)GetMemory(sizeof(*mVertices) * NUM_VERTICES);
@@ -233,7 +221,7 @@ Window::Window(void)
     Printf("[Window::Init] OpenGL initialization done");
 
     mProjection = glm::ortho(-3.0f, 3.0f, -3.0f, 3.0f, -1.0f, 1.0f);
-    MakeViewMatrix();
+    MakeViewMatrix(this);
 }
 
 Window::~Window()
@@ -264,54 +252,50 @@ static void ConvertCoords(Vertex *vertices, const glm::vec2& pos)
     }
 }
 
-static const float zoomSpeed = 1.0f;
-static const float moveSpeed = 1.5f;
-static const float rotationSpeed = 1.0f;
-
 void Camera_ZoomIn(void)
 {
-    gui->mCameraZoom -= zoomSpeed;
+    gui->mCameraZoom -= editor->mConfig->mCameraZoomSpeed;
     if (gui->mCameraZoom < 3.0f)
         gui->mCameraZoom = 3.0f;
 }
 
 void Camera_ZoomOut(void)
 {
-    gui->mCameraZoom += zoomSpeed;
+    gui->mCameraZoom += editor->mConfig->mCameraZoomSpeed;
 }
 
 void Camera_RotateLeft(void)
 {
-    gui->mCameraRotation -= rotationSpeed;
+    gui->mCameraRotation -= editor->mConfig->mCameraRotationSpeed;
 }
 
 void Camera_RotateRight(void)
 {
-    gui->mCameraRotation += rotationSpeed;
+    gui->mCameraRotation += editor->mConfig->mCameraRotationSpeed;
 }
 
 void Camera_MoveUp(void)
 {
-    gui->mCameraPos.x += -sin(glm::radians(gui->mCameraRotation)) * moveSpeed;
-    gui->mCameraPos.y += cos(glm::radians(gui->mCameraRotation)) * moveSpeed;
+    gui->mCameraPos.x += -sin(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
+    gui->mCameraPos.y += cos(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
 }
 
 void Camera_MoveDown(void)
 {
-    gui->mCameraPos.x -= -sin(glm::radians(gui->mCameraRotation)) * moveSpeed;
-    gui->mCameraPos.y -= cos(glm::radians(gui->mCameraRotation)) * moveSpeed;
+    gui->mCameraPos.x -= -sin(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
+    gui->mCameraPos.y -= cos(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
 }
 
 static void Camera_MoveLeft(void)
 {
-    gui->mCameraPos.x -= cos(glm::radians(gui->mCameraRotation)) * moveSpeed;
-    gui->mCameraPos.y -= sin(glm::radians(gui->mCameraRotation)) * moveSpeed;
+    gui->mCameraPos.x -= cos(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
+    gui->mCameraPos.y -= sin(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
 }
 
 static void Camera_MoveRight(void)
 {
-    gui->mCameraPos.x += cos(glm::radians(gui->mCameraRotation)) * moveSpeed;
-    gui->mCameraPos.y += sin(glm::radians(gui->mCameraRotation)) * moveSpeed;
+    gui->mCameraPos.x += cos(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
+    gui->mCameraPos.y += sin(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
 }
 
 static void PollEvents(void)
@@ -370,35 +354,7 @@ void Window::BeginFrame(void)
     ImGui_ImplOpenGL3_NewFrame();
 }
 
-static void GUI_DrawMenuItems(std::vector<CMenuItem>& itemList)
-{
-    for (auto& it : itemList) {
-        if (ImGui::MenuItem(it.mName.GetBuffer(), it.mShortcut.GetBuffer())) {
-            it.mActive = true;
-        }
-    }
-}
-
-static void GUI_DrawMenuChildren(std::vector<CMenu>& childList)
-{
-    for (auto& it : childList) {
-        if (ImGui::BeginMenu(it.mName.GetBuffer())) {
-            if (it.mItemList.size()) {
-                GUI_DrawMenuItems(it.mItemList);
-            }
-            it.mActive = true;
-            ImGui::EndMenu();
-        }
-    }
-}
-
-static void GUI_DrawMenus(void)
-{
-    if (ImGui::BeginMainMenuBar()) {
-        GUI_DrawMenuChildren(gui->mMainMenu.mChildList);
-        ImGui::EndMainMenuBar();
-    }
-}
+static vector_t<char> conBuffer;
 
 void Window::Print(const char *fmt, ...)
 {
@@ -410,7 +366,7 @@ void Window::Print(const char *fmt, ...)
     length = vsnprintf(msg, sizeof(msg), fmt, argptr);
     va_end(argptr);
 
-    gui->mConbuffer.insert(gui->mConbuffer.end(), msg, msg + length);
+    conBuffer.insert(conBuffer.end(), msg, msg + length);
 }
 
 void Window::EndFrame(void)
@@ -423,9 +379,9 @@ void Window::EndFrame(void)
         ImGui::SetWindowPos(ImVec2(0, 0));
 
         ImGui::Begin("Command Console");
-        mConbuffer.emplace_back('\0');
-        ImGui::Text("%s", mConbuffer.data());
-        mConbuffer.pop_back();
+        conBuffer.emplace_back('\0');
+        ImGui::Text("%s", conBuffer.data());
+        conBuffer.pop_back();
         ImGui::Text("> ");
         ImGui::SameLine();
         if (!ImGui::InputText(" ", mInputBuf, sizeof(mInputBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -441,55 +397,4 @@ void Window::EndFrame(void)
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
     SDL_GL_SwapWindow(mWindow);
-}
-
-CMenu* GUI_PushMainMenu_Child(const Str& name)
-{
-    for (uint64_t i = 0; i < gui->mMainMenu.mChildList.size(); ++i) {
-        if (gui->mMainMenu.mChildList[i].mName == name)
-            Error("[GUI_PushMainMenu_Child] child menu '%s' added twice", name.GetBuffer());
-    }
-    
-    gui->mMainMenu.mChildList.emplace_back(CMenu( name.GetBuffer() ));
-    return &gui->mMainMenu.mChildList.back();
-}
-
-CMenuItem* GUI_PushMainMenu_Item(const Str& name)
-{
-    for (uint64_t i = 0; i < gui->mMainMenu.mItemList.size(); ++i) {
-        if (gui->mMainMenu.mItemList[i].mName == name)
-            Error("[GUI_PushMainMenu_Item] menu item '%s' added twice", name.GetBuffer());
-    }
-    
-    gui->mMainMenu.mItemList.emplace_back(CMenuItem( name.GetBuffer() ));
-    return &gui->mMainMenu.mItemList.back();
-}
-
-CMenu* GUI_PushMenu(const Str& name)
-{
-    if (gui->mMenuList.find(name.GetBuffer()) != gui->mMenuList.end())
-        Error("[GUI_PushMenu] menu item '%s' added twice", name.GetBuffer());
-    
-    gui->mMenuList.try_emplace(name.GetBuffer(), CMenu( name.GetBuffer() ));
-    return &gui->mMenuList.at(name.GetBuffer());
-}
-
-CMenu* GUI_PushMenu_Child(CMenu *parent, const Str& childName)
-{
-    for (uint64_t i = 0; i < parent->mChildList.size(); ++i) {
-        if (parent->mChildList[i].mName == childName)
-            Error("[GUI_PushMenu_Child] child menu '%s' added twice to '%s'", childName.GetBuffer(), parent->mName.GetBuffer());
-    }
-    parent->mChildList.emplace_back(CMenu( childName.GetBuffer() ));
-    return &parent->mChildList.back();
-}
-
-CMenuItem* GUI_PushMenu_Item(CMenu *menu, const Str& itemName)
-{
-    for (uint64_t i = 0; i < menu->mItemList.size(); ++i) {
-        if (menu->mChildList[i].mName == itemName)
-            Error("[GUI_PushMenu_Item] menu item '%s' added twice to '%s'", itemName.GetBuffer(), menu->mName.GetBuffer());
-    }
-    menu->mItemList.emplace_back(CMenuItem( itemName.GetBuffer() ));
-    return &menu->mItemList.back();
 }

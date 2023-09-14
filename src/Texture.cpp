@@ -1,29 +1,24 @@
-#include "Common.hpp"
-#define STBI_MALLOC(size) Malloc(size)
-#define STBI_FREE(ptr) Free(ptr)
-#ifdef USE_ZONE
-#define STBI_REALLOC(ptr,nsize) Z_Realloc(ptr,nsize,TAG_STATIC,NULL,"zalloc")
-#else
-void *Mem_Realloc(void *ptr, uint32_t nsize);
-#define STBI_REALLOC(ptr,nsize) Mem_Realloc(ptr,nsize)
-#endif
+#include "gln.h"
+#define STBI_MALLOC(size) GetMemory(size)
+#define STBI_FREE(ptr) FreeMemory(ptr)
+#define STBI_REALLOC(ptr,nsize) GetResizedMemory(ptr,nsize)
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #include "Texture.h"
 
 CTexture::CTexture(void)
 {
-    multisampling = false;
-    minfilter = GL_LINEAR;
-    magfilter = GL_NEAREST;
-    wrapS = GL_REPEAT;
-    wrapT = GL_REPEAT;
-    format = GL_RGBA8;
-    height = 0;
-    width = 0;
-    id = 0;
-    channels = 0;
-    name = "None";
+    mMultisampling = false;
+    mMinfilter = GL_LINEAR;
+    mMagfilter = GL_NEAREST;
+    mWrapS = GL_REPEAT;
+    mWrapT = GL_REPEAT;
+    mFormat = GL_RGBA8;
+    mHeight = 0;
+    mWidth = 0;
+    mId = 0;
+    mChannels = 0;
+    mName = "None";
 }
 
 CTexture::~CTexture()
@@ -33,9 +28,9 @@ CTexture::~CTexture()
 
 void CTexture::Clear(void)
 {
-    imagebuffer.clear();
-    if (id != 0)
-        glDeleteTextures(1, (const GLuint *)&id);
+    mImageBuffer.clear();
+    if (mId != 0)
+        nglDeleteTextures(1, (const GLuint *)&mId);
 }
 
 bool CTexture::Save(const string_t& path) const
@@ -55,15 +50,15 @@ bool CTexture::Save(json& data) const
 {
     json texture;
 
-    texture["name"] = name;
-    texture["width"] = width;
-    texture["height"] = height;
-    texture["channels"] = channels;
-    texture["format"] = FormatToString(format);
-    texture["mag"] = FilterToString(magfilter);
-    texture["min"] = FilterToString(minfilter);
-    texture["wrapS"] = WrapToString(wrapS);
-    texture["wrapT"] = WrapToString(wrapT);
+    texture["name"] = mName;
+    texture["width"] = mWidth;
+    texture["height"] = mHeight;
+    texture["channels"] = mChannels;
+    texture["format"] = FormatToString(mFormat);
+    texture["mag"] = FilterToString(mMagfilter);
+    texture["min"] = FilterToString(mMinfilter);
+    texture["wrapS"] = WrapToString(mWrapS);
+    texture["wrapT"] = WrapToString(mWrapT);
 
     data["texture"] = texture;
 
@@ -74,17 +69,17 @@ bool CTexture::Load(const json& data)
 {
     const json& texture = data.at("texture");
 
-    name = texture.at("name");
-    width = texture.at("width");
-    height = texture.at("height");
-    channels = texture.at("channels");
-    format = StrToFormat(texture.at("format").get<string_t>().c_str());
-    minfilter = StrToFilter(texture.at("min").get<string_t>().c_str());
-    magfilter = StrToFilter(texture.at("mag").get<string_t>().c_str());
-    wrapS = StrToWrap(texture.at("wrapS").get<string_t>().c_str());
-    wrapT = StrToWrap(texture.at("wrapT").get<string_t>().c_str());
+    mName = texture.at("name");
+    mWidth = texture.at("width");
+    mHeight = texture.at("height");
+    mChannels = texture.at("channels");
+    mFormat = StrToFormat(texture.at("format").get<string_t>().c_str());
+    mMinfilter = StrToFilter(texture.at("min").get<string_t>().c_str());
+    mMagfilter = StrToFilter(texture.at("mag").get<string_t>().c_str());
+    mWrapS = StrToWrap(texture.at("wrapS").get<string_t>().c_str());
+    mWrapT = StrToWrap(texture.at("wrapT").get<string_t>().c_str());
 
-    return Load(name);
+    return Load(mName);
 }
 
 bool CTexture::Load(const string_t& path)
@@ -111,8 +106,8 @@ void CTexture::Read(const byte *buffer)
     if (tex->version != TEX2D_VERSION)
         return;
     
-    filebuffer.clear();
-    imagebuffer.clear();
+    mFileBuffer.clear();
+    mImageBuffer.clear();
 
     image = (const byte *)(tex + 1);
 
@@ -124,16 +119,16 @@ void CTexture::ReInit(void)
 {
     Printf("Reinitializing OpenGL texture parameters...");
     Bind();
-    if (multisampling) {
-        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, format, width, height, GL_FALSE);
+    if (mMultisampling) {
+        nglTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, mFormat, mWidth, mHeight, GL_FALSE);
     }
     else {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minfilter);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magfilter);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT);
+        nglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mMinfilter);
+        nglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mMagfilter);
+        nglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, mWrapS);
+        nglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, mWrapT);
 
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, channels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, imagebuffer.data());
+        nglTexImage2D(GL_TEXTURE_2D, 0, mFormat, mWidth, mHeight, 0, mChannels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, mImageBuffer.data());
     }
     Unbind();
 }
@@ -142,15 +137,19 @@ bool CTexture::LoadImage(const byte *buffer, uint64_t buflen)
 {
     stbi_uc *image;
 
-    image = stbi_load_from_memory((const stbi_uc *)buffer, buflen, (int *)&width, (int *)&height, (int *)&channels, 4);
+    image = stbi_load_from_memory((const stbi_uc *)buffer, buflen, (int *)&mWidth, (int *)&mHeight, (int *)&mChannels, 4);
     if (!image) {
         Printf("CTexture::Load: stbi_load_from_memory() failed, stbimage error: %s", stbi_failure_reason());
         return false;
     }
+    mFileBuffer.clear();
+    mFileBuffer.insert(mFileBuffer.end(), buffer, buffer + buflen);
+    mImageBuffer.clear();
+    mImageBuffer.insert(mImageBuffer.end(), image, image + (mWidth * mHeight * mChannels));
     
     Printf("Generating OpenGL texture...");
-    if (!id)
-        glGenTextures(1, (GLuint *)&id);
+    if (!mId)
+        nglGenTextures(1, (GLuint *)&mId);
     
     ReInit();
 
@@ -171,8 +170,9 @@ bool CTexture::LoadImage(const string_t& path)
     }
 
     fp = SafeOpenRead(path.c_str());
-    filebuffer.resize(FileLength(fp));
-    SafeRead(filebuffer.data(), filebuffer.size(), fp);
+    mFileBuffer.clear();
+    mFileBuffer.resize(FileLength(fp));
+    SafeRead(mFileBuffer.data(), mFileBuffer.size(), fp);
     fclose(fp);
 
     image = stbi_load(path.c_str(), &tmpwidth, &tmpheight, &tmpchannels, 4);
@@ -181,29 +181,29 @@ bool CTexture::LoadImage(const string_t& path)
         return false;
     }
 
-    width = tmpwidth;
-    height = tmpheight;
-    channels = tmpchannels;
-    imagebuffer.clear();
-    imagebuffer.insert(imagebuffer.end(), image, image + (width * height * channels));
-    Free(image);
+    mWidth = tmpwidth;
+    mHeight = tmpheight;
+    mChannels = tmpchannels;
+    mImageBuffer.clear();
+    mImageBuffer.insert(mImageBuffer.end(), image, image + (mWidth * mHeight * mChannels));
+    FreeMemory(image);
 
-    name = path;
+    mName = path;
     Printf("Generating OpenGL texture...");
-    if (!id)
-        glGenTextures(1, (GLuint *)&id);
+    if (!mId)
+        nglGenTextures(1, (GLuint *)&mId);
 
     Bind();
-    if (multisampling) {
-        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, format, width, height, GL_FALSE);
+    if (mMultisampling) {
+        nglTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, mFormat, mWidth, mHeight, GL_FALSE);
     }
     else {
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minfilter);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magfilter);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT);
+        nglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mMinfilter);
+        nglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mMagfilter);
+        nglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, mWrapS);
+        nglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, mWrapT);
 
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, channels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, imagebuffer.data());
+        nglTexImage2D(GL_TEXTURE_2D, 0, mFormat, mWidth, mHeight, 0, mChannels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, mImageBuffer.data());
     }
     Unbind();
 
@@ -220,29 +220,29 @@ bool CTexture::Write(FILE *fp) const
 
     memset(&file, 0, sizeof(file));
 
-    outbuf = Compress((void *)imagebuffer.data(), imagebuffer.size(), &outlen);
+    outbuf = Compress((void *)mImageBuffer.data(), mImageBuffer.size(), &outlen);
 
     file.ident = TEX2D_IDENT;
     file.version = TEX2D_VERSION;
-    file.channels = channels;
-    file.format = format;
-    file.height = height;
-    file.width = width;
-    file.magfilter = magfilter;
-    file.minfilter = minfilter;
-    file.wrapS = wrapS;
-    file.wrapT = wrapT;
-    file.multisampling = multisampling;
+    file.channels = mChannels;
+    file.format = mFormat;
+    file.height = mHeight;
+    file.width = mWidth;
+    file.magfilter = mMagfilter;
+    file.minfilter = mMinfilter;
+    file.wrapS = mWrapS;
+    file.wrapT = mWrapT;
+    file.multisampling = mMultisampling;
     file.compression = parm_compression;
     file.compressedSize = outlen;
-    file.fileSize = filebuffer.size();
-    N_strncpyz(file.name, GetFilename(name.c_str()), sizeof(file.name));
+    file.fileSize = mFileBuffer.size();
+    N_strncpyz(file.name, GetFilename(mName.c_str()), sizeof(file.name));
 
     SafeWrite(&file, sizeof(file), fp);
     SafeWrite(outbuf, outlen, fp);
-    SafeWrite(filebuffer.data(), filebuffer.size(), fp); // write the raw image data
+    SafeWrite(mFileBuffer.data(), mFileBuffer.size(), fp); // write the raw image data
 
-    Free(outbuf);
+    FreeMemory(outbuf);
 
     return true;
 }
@@ -266,19 +266,19 @@ bool CTexture::Read(FILE *fp)
         return false;
     }
 
-    cBuf = (char *)Malloc(file.compressedSize);
+    cBuf = (char *)GetMemory(file.compressedSize);
     SafeRead(cBuf, file.compressedSize, fp);
 
     inbuf = Decompress(cBuf, file.compressedSize, &inlen, file.compression);
     
-    imagebuffer.clear();
-    imagebuffer.insert(imagebuffer.end(), inbuf, inbuf + inlen);
-    filebuffer.clear();
-    filebuffer.resize(file.fileSize);
+    mImageBuffer.clear();
+    mImageBuffer.insert(mImageBuffer.end(), inbuf, inbuf + inlen);
+    mFileBuffer.clear();
+    mFileBuffer.resize(file.fileSize);
 
-    SafeRead(filebuffer.data(), filebuffer.size(), fp);
+    SafeRead(mFileBuffer.data(), mFileBuffer.size(), fp);
 
-    Free(cBuf);
+    FreeMemory(cBuf);
 
     return true;
 }

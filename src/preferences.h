@@ -6,9 +6,9 @@
 class CPrefData
 {
 public:
-    Str mName;
-    Str mValue;
-    Str mGroup;
+    string_t mName;
+    string_t mValue;
+    string_t mGroup;
 
     CPrefData(const char *name, const char *value, const char *group)
         : mName{ name }, mValue{ value }, mGroup{ group } { }
@@ -21,11 +21,15 @@ public:
     CPrefs(void);
     ~CPrefs();
 
-    void LoadPrefs(const Str& path);
+    void LoadPrefs(const string_t& path);
     void SavePrefs(void) const;
+    void SetDefault(void);
     void Clear(void);
 
-    inline const Str& operator[](const char *name) const
+    inline const string_t& FindPref(const char *name) const
+    { return operator[](name); }
+
+    inline const string_t& operator[](const char *name) const
     {
         for (const auto& it : mPrefList) {
             if (it.mName == name)
@@ -34,26 +38,30 @@ public:
         Error("[CPrefs::GetPrefData] preference '%s' doesn't exist", name);
     }
 
-    Str mFilePath;
-    std::vector<CPrefData> mPrefList;
+    string_t mFilePath;
+    vector_t<CPrefData> mPrefList;
 };
 
 class CGameConfig
 {
 public:
     CGameConfig(void);
-    CGameConfig(const Str& path);
+    CGameConfig(const string_t& path);
     ~CGameConfig();
 
     void Dump(void);
 
-    Str mEditorPath; // editor's internal save path
-    Str mEnginePath; // path to the engine
-    Str mExecutablePath; // path to exe's
-    Str mEngineName; // engine's name
+    string_t mEditorPath; // editor's internal save path
+    string_t mEnginePath; // path to the engine
+    string_t mExecutablePath; // path to exe's
+    string_t mEngineName; // engine's name
 
     int mTextureDetail;
     int mTextureFiltering;
+
+    float mCameraMoveSpeed;
+    float mCameraRotationSpeed;
+    float mCameraZoomSpeed;
 
     CPrefs mPrefs;
 };

@@ -180,25 +180,24 @@ float LittleFloat(float f)
 	return out.f;
 }
 
-bool LoadJSON(json& data, const Str& path)
+bool LoadJSON(json& data, const string_t& path)
 {
-	std::ifstream file;
-	if (!FileExists(path.GetBuffer())) {
-		Printf("WARNING: failed to load json file '%s', file doesn't exist", path.GetBuffer());
+	FileStream file;
+	if (!FileExists(path.c_str())) {
+		Printf("WARNING: failed to load json file '%s', file doesn't exist", path.c_str());
 		return false;
 	}
-	file.open(path.GetBuffer(), std::ios::in);
-	if (!file.is_open()) {
-		Error("[LoadJSON] failed to open json file '%s'", path.GetBuffer());
+	if (!file.Open(path.c_str(), "rb")) {
+		Error("[LoadJSON] failed to open json file '%s'", path.c_str());
 	}
 	try {
-		data = json::parse(file);
+		data = json::parse(file.GetStream());
 	} catch (const json::exception& e) {
-		Printf("ERROR: failed to load json file '%s'. nlohmann::json::exception =>\n\tid: %i\n\tstring: %s", path.GetBuffer(), e.id, e.what());
-		file.close();
+		Printf("ERROR: failed to load json file '%s'. nlohmann::json::exception =>\n\tid: %i\n\tstring: %s", path.c_str(), e.id, e.what());
+		file.Close();
 		return false;
 	}
-	file.close();
+	file.Close();
 	return true;
 }
 
@@ -237,9 +236,9 @@ void Error(const char *fmt, ...)
 	do_backtrace();
 
 #ifndef BMFC
-	gui->Print("\n********** ERROR **********");
-	gui->Print("%s", buffer);
-	gui->Print("Exiting app (code : -1)");
+	Window::Print("\n********** ERROR **********");
+	Window::Print("%s", buffer);
+	Window::Print("Exiting app (code : -1)");
 #endif
 	fprintf(stderr, "\n********** ERROR **********\n");
 	fprintf(stderr, "%s\n", buffer);
@@ -260,7 +259,7 @@ void Printf(const char *fmt, ...)
     va_end(argptr);
 
 #ifndef BMFC
-	gui->Print("%s", buffer);
+	Window::Print("%s", buffer);
 #endif
 	fprintf(stdout, "%s\n", buffer);
 }
@@ -501,11 +500,7 @@ void *GetMemory(uint64_t size)
 {
 	void *buf;
 
-#ifdef BMFC
-	buf = malloc(size);
-#else
 	buf = Mem_Alloc(size);
-#endif
 	if (!buf) {
 		Error("GetMemory: out of memory!");
 	}
@@ -517,12 +512,7 @@ void *GetResizedMemory(void *ptr, uint64_t nsize)
 {
 	void *buf;
 
-#ifdef BMFC
-	buf = realloc(ptr, nsize);
-#else
-	extern void *Mem_Realloc(void *ptr, uint64_t nsize);
 	buf = Mem_Realloc(ptr, nsize);
-#endif
 	if (!buf) {
 		Error("GetResizedMemory: out of memory!");
 	}
@@ -537,11 +527,7 @@ void *GetClearedMemory(uint64_t size)
 
 void FreeMemory(void *ptr)
 {
-#ifdef BMFC
-	free(ptr);
-#else
 	Mem_Free(ptr);
-#endif
 }
 
 int GetParm(const char *parm)

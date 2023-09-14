@@ -11,49 +11,6 @@ struct Vertex
     float empty;
 };
 
-class CInput
-{
-public:
-    Str mName;
-    Str mBuf;
-    bool mModified;
-
-    CInput(void) { }
-    CInput(const char *name, uint64_t bufLen)
-        : mName{ name }, mModified{ false }
-    {
-        mBuf.GetBufferSetLength(bufLen);
-    }
-    
-};
-
-class CMenuItem
-{
-public:
-    Str mName;
-    Str mShortcut;
-    bool mActive;
-
-    CMenuItem(void) { }
-    CMenuItem(const char *name)
-        : mName{ name }, mShortcut{ (const char *)NULL }, mActive{ false } { }
-    ~CMenuItem() { }
-};
-
-class CMenu
-{
-public:
-    Str mName;
-    bool mActive;
-    std::vector<CMenu> mChildList;
-    std::vector<CMenuItem> mItemList;
-
-    CMenu(void) { }
-    CMenu(const char *name)
-        : mName{ name }, mActive{ false }, mChildList{}, mItemList{} { }
-    ~CMenu() { }
-};
-
 class Window
 {
 public:
@@ -72,10 +29,6 @@ public:
     uint32_t *mIndices;
 
     char mInputBuf[4096];
-    std::vector<char> mConbuffer;
-
-    CMenu mMainMenu;
-    eastl::unordered_map<const char *, CMenu> mMenuList;
 
     float mCameraZoom;
     float mCameraRotation;
@@ -87,12 +40,5 @@ public:
 };
 
 extern Window *gui;
-
-CMenu* GUI_PushMainMenu_Child(const Str& name);
-CMenuItem* GUI_PushMainMenu_Item(const Str& name);
-
-CMenu* GUI_PushMenu(const Str& name);
-CMenu* GUI_PushMenu_Child(CMenu *parent, const Str& childName);
-CMenuItem* GUI_PushMenu_Item(CMenu *menu, const Str& itemName);
 
 #endif

@@ -5,82 +5,88 @@
 
 #include <glad/glad.h>
 
-class CTexture : public CEditorTool
+class CTexture
 {
 public:
     CTexture(void);
-    virtual ~CTexture();
+    ~CTexture();
 
     bool LoadImage(const byte *buffer, uint64_t buflen);
     bool LoadImage(const string_t& path);
-    virtual bool Load(const string_t& path);
-    virtual bool Load(const json& data);
-    virtual bool Save(json& data) const;
-    virtual bool Save(const string_t& path) const;
-    virtual void Clear(void);
+    bool Load(const string_t& path);
+    bool Load(const json& data);
+    bool Save(json& data) const;
+    bool Save(const string_t& path) const;
+    void Clear(void);
 
     void ReInit(void); // reinitializes the texture's parameters for the gpu
 
     void SetParms(uint32_t min, uint32_t mag, uint32_t WrapS, uint32_t WrapT, uint32_t target)
     {
-        minfilter = min;
-        magfilter = magfilter;
-        wrapS = WrapS;
-        wrapT = WrapT;
+        mMinfilter = min;
+        mMagfilter = mag;
+        mWrapS = WrapS;
+        mWrapT = WrapT;
         if (target == GL_TEXTURE_2D)
-            multisampling = false;
+            mMultisampling = false;
         else if (target == GL_TEXTURE_2D_MULTISAMPLE)
-            multisampling = true;
+            mMultisampling = true;
     }
+
+    inline const string_t& GetName(void) const
+    { return mName; }
+    inline void SetName(const string_t& name)
+    { mName = name; }
 
     bool Write(FILE *fp) const;
     bool Read(FILE *fp);
     void Read(const byte *buffer);
 
     inline uint32_t GetWidth(void) const
-    { return width; }
+    { return mWidth; }
     inline uint32_t GetHeight(void) const
-    { return height; }
+    { return mHeight; }
     inline uint32_t GetMagFilter(void) const
-    { return magfilter; }
+    { return mMagfilter; }
     inline uint32_t GetMinFilter(void) const
-    { return minfilter; }
+    { return mMinfilter; }
     inline uint32_t GetWrapS(void) const
-    { return wrapS; }
+    { return mWrapS; }
     inline uint32_t GetWrapT(void) const
-    { return wrapT; }
+    { return mWrapT; }
     inline uint32_t GetFormat(void) const
-    { return format; }
+    { return mFormat; }
     inline bool IsMultisampled(void) const
-    { return multisampling; }
+    { return mMultisampling; }
     inline uint32_t GetChannels(void) const
-    { return channels; }
+    { return mChannels; }
     inline const vector_t<byte>& GetBuffer(void) const
-    { return imagebuffer; }
+    { return mImageBuffer; }
     inline vector_t<byte>& GetBuffer(void)
-    { return imagebuffer; }
+    { return mImageBuffer; }
 
     inline void Bind(uint32_t slot = 0) const
     {
-        glActiveTexture(GL_TEXTURE0+slot);
-        glBindTexture(multisampling ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, id);
+        nglActiveTexture(GL_TEXTURE0+slot);
+        nglBindTexture(mMultisampling ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, mId);
     }
     inline void Unbind(void) const
-    { glBindTexture(multisampling ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, 0); }
+    { nglBindTexture(mMultisampling ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, 0); }
 private:
-    vector_t<byte> imagebuffer;
-    vector_t<byte> filebuffer;
+    vector_t<byte> mImageBuffer;
+    vector_t<byte> mFileBuffer;
 
-    uint32_t minfilter;
-    uint32_t magfilter;
-    uint32_t wrapS;
-    uint32_t wrapT;
-    uint32_t format;
-    uint32_t width;
-    uint32_t height;
-    uint32_t channels;
-    uint32_t id;
-    bool multisampling;
+    string_t mName;
+    uint32_t mMinfilter;
+    uint32_t mMagfilter;
+    uint32_t mWrapS;
+    uint32_t mWrapT;
+    uint32_t mFormat;
+    uint32_t mWidth;
+    uint32_t mHeight;
+    uint32_t mChannels;
+    uint32_t mId;
+    bool mMultisampling;
 };
 
 #endif

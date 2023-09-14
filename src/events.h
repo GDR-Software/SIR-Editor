@@ -54,8 +54,8 @@ private:
     void QueueEvent(sysEventType_t evType, int evValue, int evValue2, uint32_t ptrLength, void *ptr);
     void SendKeyEvents(void);
 
-    std::array<sysEvent_t, MAX_EVENT_QUEUE> mEventQueue;
-    std::array<sysEvent_t, MAX_PUSHED_EVENTS> mPushedEvents;
+    eastl::array<sysEvent_t, MAX_EVENT_QUEUE> mEventQueue;
+    eastl::array<sysEvent_t, MAX_PUSHED_EVENTS> mPushedEvents;
     sysEvent_t *mLastEvent;
     uint32_t mEventHead;
     uint32_t mEventTail;

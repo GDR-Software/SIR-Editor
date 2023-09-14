@@ -16,16 +16,41 @@
 #include <fstream>
 #include <unordered_map>
 #include <EASTL/string.h>
+#include <EASTL/map.h>
 #include <EASTL/unordered_map.h>
 #include <EASTL/array.h>
+#include <EASTL/list.h>
 #include <EASTL/vector.h>
 #include <glm/glm.hpp>
 #include "imgui.h"
+#include "imgui_impl_opengl3.h"
+#include "imgui_impl_sdl2.h"
 
 void *GetResizedMemory(void *ptr, uint64_t nsize);
 void *GetClearedMemory(uint64_t size);
 void *GetMemory(uint64_t size);
 void FreeMemory(void *ptr);
+
+struct heap_allocator
+{
+	constexpr heap_allocator(void) noexcept { }
+	constexpr heap_allocator(const char* _name = "allocator") noexcept { }
+	constexpr heap_allocator(const heap_allocator &) noexcept { }
+
+	inline bool operator!=(const eastl::allocator) { return true; }
+	inline bool operator!=(const heap_allocator) { return false; }
+	inline bool operator==(const eastl::allocator) { return false; }
+	inline bool operator==(const heap_allocator) { return true; }
+
+	inline void* allocate(size_t n) const
+    { return GetMemory(n); }
+	inline void* allocate(size_t& n, size_t& alignment, size_t& offset) const
+    { return GetMemory(n); }
+	inline void* allocate(size_t n, size_t alignment, size_t alignmentOffset, int flags) const
+    { return GetMemory(n); }
+	inline void deallocate(void *p, size_t) const noexcept
+    { FreeMemory(p); }
+};
 
 template<typename T>
 class heap_allocator_template
@@ -56,6 +81,7 @@ void Mem_Init(void);
 void Mem_Shutdown(void);
 void *Mem_Alloc(const uint32_t size);
 void Mem_Free(void *ptr);
+void *Mem_Realloc(void *ptr, uint64_t nsize);
 
 #define PAD(base, alignment) (((base)+(alignment)-1) & ~((alignment)-1))
 template<typename type, typename alignment>
@@ -66,7 +92,7 @@ void Error(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 void Printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 const char *va(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 uint64_t LoadFile(const char *filename, void **buffer);
-bool LoadJSON(json& data, const Str& path);
+bool LoadJSON(json& data, const string_t& path);
 void Exit(void);
 int GetParm(const char *parm);
 bool N_strcat(char *dest, size_t size, const char *src);
@@ -112,7 +138,11 @@ char* BuildOSPath(const char *curPath, const char *gamepath, const char *npath);
 
 template<typename T>
 inline T *Allocate(void)
-{ return static_cast<T *>(GetMemory(sizeof(T))); }
+{
+    T *mem = static_cast<T *>(GetMemory(sizeof(T)));
+    ::new (mem) T();
+    return mem;
+}
 template<typename T, typename... Args>
 inline T *Allocate(Args&&... args)
 {
@@ -120,11 +150,6 @@ inline T *Allocate(Args&&... args)
     ::new (mem) T(eastl::forward<Args>(args)...);
     return mem;
 }
-
-template<typename T>
-using list_t = std::list<T, heap_allocator_template<T>>;
-template<typename T>
-using vector_t = std::vector<T, heap_allocator_template<T>>;
 
 /*
 All the random shit I pulled from GtkRadiant into this project

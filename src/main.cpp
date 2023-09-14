@@ -3,13 +3,16 @@
 int main(int argc, char **argv)
 {
     Mem_Init();
-
-    gui = new Window;
-    editor = new CEditor;
     atexit(Mem_Shutdown);
+
+    gui = Allocate<Window>();
+    editor = Allocate<CEditor>();
+
+    editor->ReloadFileCache();
 
     while (1) {
         gui->BeginFrame();
+        editor->Draw();
 
         gui->EndFrame();
     }

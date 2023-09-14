@@ -22,6 +22,7 @@ OBJS=\
 	$(O)/stream.o \
 	$(O)/events.o \
 	$(O)/command.o \
+	$(O)/preferences.o \
 	$(O)/Heap.o \
 	$(O)/ngl_proc.o \
 

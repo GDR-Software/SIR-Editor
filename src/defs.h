@@ -3,8 +3,12 @@
 
 #pragma once
 
-typedef std::vector<void *> CPtrArray;
 using json = nlohmann::json;
+using string_t = eastl::basic_string<char, heap_allocator>;
+template<typename T>
+using vector_t = eastl::vector<T, heap_allocator>;
+template<typename T>
+using list_t = eastl::list<T, heap_allocator>;
 
 #ifndef MAX_GDR_PATH
 #define MAX_GDR_PATH 64
