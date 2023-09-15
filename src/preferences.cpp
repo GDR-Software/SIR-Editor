@@ -1,6 +1,9 @@
 #include "gln.h"
 #include "preferences.h"
 
+#define GLNOMAD_ENGINE "GLNE"
+#define GLNOMAD_EXE "glnomad" STR(EXE_EXT)
+
 CPrefs::CPrefs(void)
 {
 }
@@ -8,6 +11,18 @@ CPrefs::CPrefs(void)
 CPrefs::~CPrefs()
 {
     SavePrefs();
+}
+
+static void PrintPrefs_f(void)
+{
+    const vector_t<CPrefData>& prefList = editor->mConfig->mPrefs.mPrefList;
+    for (vector_t<CPrefData>::const_iterator it = prefList.cbegin(); it != prefList.cend(); ++it) {
+        Printf(
+            "[%s] =>\n"
+            "\tValue: %s\n"
+            "\tGroup: %s\n"
+        , it->mName.c_str(), it->mValue.c_str(), it->mGroup.c_str());
+    }
 }
 
 inline const char* GetString(const json& data)
@@ -26,7 +41,6 @@ void CPrefs::LoadPrefs(const string_t& path)
 
     mPrefList.reserve(data["config"].size());
     mPrefList.emplace_back("enginePath", GetString(data["config"]["enginePath"]), "config");
-    mPrefList.emplace_back("engineName", GetString(data["config"]["engineName"]), "config");
     mPrefList.emplace_back("exePath", GetString(data["config"]["exePath"]), "config");
 
     mPrefList.reserve(data["graphics"].size());
@@ -52,20 +66,16 @@ void CPrefs::SetDefault(void)
     mPrefList.emplace_back("zoomSpeed", "1.5f", "camera");
 }
 
-static void WriteJSON(const json& data)
-{
-
-}
-
 void CPrefs::SavePrefs(void) const
 {
     json data;
-    std::ofstream file("Data/preferences.json");
+    std::ofstream file("Data/preferences.json", std::ios::out);
+
+    Printf("[CPrefs::SavePrefs] saving preferences...");
 
     // general configuration
     {
         data["config"]["enginePath"] = FindPref("enginePath");
-        data["config"]["engineName"] = FindPref("engineName");
         data["config"]["exePath"] = FindPref("exePath");
     }
     // graphics configuration
@@ -82,22 +92,21 @@ void CPrefs::SavePrefs(void) const
     if (!file.is_open()) {
         Error("[CPrefs::SavePrefs] failed to open preferences file in save mode");
     }
-
-    WriteJSON(data);
-
+    file.width(4);
     file << data;
     file.close();
 }
 
 CGameConfig::CGameConfig(void)
 {
+    Cmd_AddCommand("preflist", PrintPrefs_f);
+
     Printf("[CGameConfig::Init] initializing current configuration");
     mEditorPath = "Data/";
 
     mPrefs.LoadPrefs("Data/preferences.json");
 
     mEnginePath = mPrefs["enginePath"];
-    mEngineName = mPrefs["engineName"];
     mExecutablePath = mPrefs["exePath"];
 
     mTextureDetail = atoi(mPrefs["textureDetail"].c_str());
@@ -106,6 +115,13 @@ CGameConfig::CGameConfig(void)
     mCameraMoveSpeed = atof(mPrefs["moveSpeed"].c_str());
     mCameraRotationSpeed = atof(mPrefs["rotationSpeed"].c_str());
     mCameraZoomSpeed = atof(mPrefs["zoomSpeed"].c_str());
+    
+    if (mEnginePath.find_last_of(GLNOMAD_ENGINE) != eastl::string::npos) {
+        mEngineName = GLNOMAD_ENGINE;
+    }
+    else {
+        mEngineName = "Unknown";
+    }
 }
 
 CGameConfig::~CGameConfig()

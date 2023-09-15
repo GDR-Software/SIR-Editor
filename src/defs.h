@@ -3,6 +3,28 @@
 
 #pragma once
 
+#ifdef _WIN32
+#define T TEXT
+#ifdef UNICODE
+inline LPWSTR AtoW( const char *s ) 
+{
+	static WCHAR buffer[MAXPRINTMSG*2];
+	MultiByteToWideChar( CP_ACP, 0, s, strlen( s ) + 1, (LPWSTR) buffer, arraylen( buffer ) );
+	return buffer;
+}
+
+inline const char *WtoA( const LPWSTR s ) 
+{
+	static char buffer[MAXPRINTMSG*2];
+	WideCharToMultiByte( CP_ACP, 0, s, -1, buffer, arraylen( buffer ), NULL, NULL );
+	return buffer;
+}
+#else
+#define AtoW(S) (S)
+#define WtoA(S) (S)
+#endif
+#endif
+
 using json = nlohmann::json;
 using string_t = eastl::basic_string<char, heap_allocator>;
 template<typename T>
@@ -19,6 +41,16 @@ using list_t = eastl::list<T, heap_allocator>;
 #define MAX_OSPATH 256
 #endif
 #define MAX_VA_BUFFER 8192
+
+#ifdef _WIN32
+#define EXE_EXT ".exe"
+#else
+// with unix apps, there isn't really a specific or single app exe, so we'll just go with an empty string
+#define EXE_EXT ""
+#endif
+
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
 
 #ifndef arraylen
 #define arraylen(x) (sizeof((x))/sizeof((*x)))

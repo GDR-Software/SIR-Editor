@@ -13,6 +13,12 @@
 #define WINDOW_HEIGHT 1080
 
 Window *gui;
+static vector_t<char> conBuffer;
+
+static void Clear_f(void)
+{
+    conBuffer.clear();
+}
 
 static void *ImGui_MemAlloc(size_t n, void *)
 {
@@ -173,7 +179,7 @@ static void InitGLObjects(void)
     if (vpmId == -1) {
         Error("[Window::InitGLObjects] Failed to find uniform u_ViewProjection");
     }
-    Printf("Finished");
+    Printf("[Window::InitGLObjects] Finished");
 }
 
 Window::Window(void)
@@ -227,6 +233,10 @@ Window::Window(void)
 Window::~Window()
 {
     FreeMemory(mVertices);
+
+    nglDeleteVertexArrays(1, &vaoId);
+    nglDeleteBuffersARB(1, &vboId);
+    nglDeleteProgram(shaderId);
 
     ImGui_ImplSDL2_Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
@@ -343,6 +353,8 @@ void Window::BeginFrame(void)
     nglClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     nglViewport(0, 0, 1980, 1080);
 
+    events.EventLoop();
+
     MakeViewMatrix();
 
     ImGuiIO& io = ImGui::GetIO();
@@ -353,8 +365,6 @@ void Window::BeginFrame(void)
     ImGui_ImplSDL2_NewFrame();
     ImGui_ImplOpenGL3_NewFrame();
 }
-
-static vector_t<char> conBuffer;
 
 void Window::Print(const char *fmt, ...)
 {
@@ -367,6 +377,19 @@ void Window::Print(const char *fmt, ...)
     va_end(argptr);
 
     conBuffer.insert(conBuffer.end(), msg, msg + length);
+    conBuffer.emplace_back('\n');
+}
+
+static void PollCommands(const char *input)
+{
+    if (input[0] == '/' || input[0] == '\\') {
+        input++;
+    }
+    else {
+        return; // not a command
+    }
+
+    Cmd_ExecuteText(input);
 }
 
 void Window::EndFrame(void)
@@ -375,17 +398,16 @@ void Window::EndFrame(void)
         const ImVec2 windowSize = ImGui::GetWindowSize();
         const ImVec2 windowPos = ImGui::GetWindowPos();
 
-        ImGui::SetWindowSize(ImVec2(720, 1980));
-        ImGui::SetWindowPos(ImVec2(0, 0));
-
         ImGui::Begin("Command Console");
         conBuffer.emplace_back('\0');
         ImGui::Text("%s", conBuffer.data());
         conBuffer.pop_back();
         ImGui::Text("> ");
         ImGui::SameLine();
-        if (!ImGui::InputText(" ", mInputBuf, sizeof(mInputBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
-            *mInputBuf = 0;
+
+        memset(mInputBuf, 0, sizeof(mInputBuf));
+        if (ImGui::InputText(" ", mInputBuf, sizeof(mInputBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
+            PollCommands(mInputBuf);
         }
         ImGui::End();
 

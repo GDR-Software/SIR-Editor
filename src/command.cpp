@@ -166,13 +166,6 @@ void Cmd_ExecuteText(const char *text)
     TokenizeString(text, false);
     cmdname = Argv(0);
 
-    if (cmdname[0] != '\\' && cmdname[0] != '/') {
-        return;
-    }
-    else {
-        cmdname++;
-    }
-
     cmd = Cmd_FindCommand(cmdname);
     if (!cmd) {
         Printf("No such command '%s'", cmdname);
@@ -193,7 +186,7 @@ void Cmd_AddCommand(const char *name, cmdfunc_t func)
     }
 
     cmd = (CCommand *)Allocate<CCommand>(name, func);
-    cmd->mName = G_CopyString(name);
+    cmd->mName = name;
     cmd->mFunc = func;
     cmd->mNext = cmdlist;
     cmdlist = cmd;

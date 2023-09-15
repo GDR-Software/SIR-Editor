@@ -1,3 +1,15 @@
 {
-    
+    "camera": {
+        "moveSpeed": "1.5f",
+        "rotationSpeed": "1.0f",
+        "zoomSpeed": "1.5f"
+    },
+    "config": {
+        "enginePath": "",
+        "exePath": ""
+    },
+    "graphics": {
+        "textureDetail": "2",
+        "textureFiltering": "Bilinear"
+    }
 }

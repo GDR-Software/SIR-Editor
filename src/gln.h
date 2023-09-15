@@ -157,6 +157,7 @@ All the random shit I pulled from GtkRadiant into this project
 #include "idatastream.h"
 #include "stream.h"
 #include "list.h"
+#include "idll.h"
 
 /*
 Editor-specific stuff
@@ -168,6 +169,51 @@ Editor-specific stuff
 #include "gui.h"
 #include "preferences.h"
 #include "editor.h"
+
+#undef new
+#undef delete
+
+inline void *operator new(size_t size) noexcept
+{ return GetClearedMemory(size); }
+inline void *operator new(size_t size, const std::nothrow_t&) noexcept
+{ return ::operator new(size); }
+inline void *operator new[](size_t size) noexcept
+{ return ::operator new(size); }
+inline void *operator new[](size_t size, const std::nothrow_t&) noexcept
+{ return ::operator new[](size); }
+inline void *operator new(size_t size, std::align_val_t alignment) noexcept
+{ (void)alignment; return ::operator new(size); }
+inline void *operator new(size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept
+{ return ::operator new(size, alignment); }
+inline void *operator new[](size_t size, std::align_val_t alignment) noexcept
+{ return ::operator new(size, alignment); }
+inline void *operator new[](size_t size, std::align_val_t alignment, const std::nothrow_t&) noexcept
+{ return ::operator new[](size, alignment); }
+
+inline void operator delete(void* ptr) noexcept
+{ FreeMemory(ptr); }
+inline void operator delete(void* ptr, const std::nothrow_t&) noexcept
+{ ::operator delete(ptr); }
+inline void operator delete(void* ptr, size_t) noexcept
+{ ::operator delete(ptr); }
+inline void operator delete[] (void* ptr) noexcept
+{ ::operator delete(ptr); }
+inline void operator delete[] (void* ptr, const std::nothrow_t&) noexcept
+{ ::operator delete[](ptr); }
+inline void operator delete[] (void* ptr, size_t) noexcept
+{ ::operator delete[](ptr); }
+inline void operator delete(void* ptr, std::align_val_t) noexcept
+{ ::operator delete(ptr); }
+inline void operator delete(void* ptr, std::align_val_t alignment, const std::nothrow_t&) noexcept
+{ ::operator delete(ptr, alignment); }
+inline void operator delete(void* ptr, size_t, std::align_val_t alignment) noexcept
+{ ::operator delete(ptr, alignment); }
+inline void operator delete[] (void* ptr, std::align_val_t alignment) noexcept
+{ ::operator delete(ptr, alignment); }
+inline void operator delete[] (void* ptr, std::align_val_t alignment, const std::nothrow_t&) noexcept
+{ ::operator delete[](ptr, alignment); }
+inline void operator delete[] (void* ptr, size_t, std::align_val_t alignment) noexcept
+{ ::operator delete[](ptr, alignment); }
 
 extern int parm_compression;
 extern int myargc;
