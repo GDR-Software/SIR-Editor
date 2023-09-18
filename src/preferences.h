@@ -6,9 +6,9 @@
 class CPrefData
 {
 public:
-    string_t mName;
-    string_t mValue;
-    string_t mGroup;
+    std::string mName;
+    std::string mValue;
+    std::string mGroup;
 
     CPrefData(const char *name, const char *value, const char *group)
         : mName{ name }, mValue{ value }, mGroup{ group } { }
@@ -21,15 +21,15 @@ public:
     CPrefs(void);
     ~CPrefs();
 
-    void LoadPrefs(const string_t& path);
+    void LoadPrefs(const std::string& path);
     void SavePrefs(void) const;
     void SetDefault(void);
     void Clear(void);
 
-    inline const string_t& FindPref(const char *name) const
+    inline const std::string& FindPref(const char *name) const
     { return operator[](name); }
 
-    inline const string_t& operator[](const char *name) const
+    inline const std::string& operator[](const char *name) const
     {
         for (const auto& it : mPrefList) {
             if (it.mName == name)
@@ -38,23 +38,23 @@ public:
         Error("[CPrefs::GetPrefData] preference '%s' doesn't exist", name);
     }
 
-    string_t mFilePath;
-    vector_t<CPrefData> mPrefList;
+    std::string mFilePath;
+    std::vector<CPrefData> mPrefList;
 };
 
 class CGameConfig
 {
 public:
     CGameConfig(void);
-    CGameConfig(const string_t& path);
+    CGameConfig(const std::string& path);
     ~CGameConfig();
 
     void Dump(void);
 
-    string_t mEditorPath; // editor's internal save path
-    string_t mEnginePath; // path to the engine
-    string_t mExecutablePath; // path to exe's
-    string_t mEngineName; // engine's name
+    std::string mEditorPath; // editor's internal save path
+    std::string mEnginePath; // path to the engine
+    std::string mExecutablePath; // path to exe's
+    std::string mEngineName; // engine's name
 
     int mTextureDetail;
     int mTextureFiltering;

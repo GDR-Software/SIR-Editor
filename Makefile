@@ -25,6 +25,7 @@ OBJS=\
 	$(O)/preferences.o \
 	$(O)/Heap.o \
 	$(O)/ngl_proc.o \
+	$(O)/ImGuiFileDialog.o \
 
 $(O)/%.o: src/%.cpp
 	$(COMPILE)
@@ -33,7 +34,7 @@ $(O)/%.o: Dependencies/src/%.cpp
 	$(COMPILE)
 
 $(EXE): $(OBJS) $(DEPS)
-	$(CC) $(CFLAGS) $(OBJS) $(DEPS) -o $(EXE) -lGL -lSDL2 /usr/local/lib/libspdlog.a /usr/local/lib/libfoonathan_memory-0.7.3.a libEASTL.a -lbacktrace -lbz2 -lz
+	$(CC) $(CFLAGS) $(OBJS) $(DEPS) -o $(EXE) -lGL -lSDL2 libEASTL.a -lbacktrace -lbz2 -lz -lboost_thread -lboost_chrono
 
 clean:
 	rm $(O)/*

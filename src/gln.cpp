@@ -3,6 +3,15 @@
 #include <zlib.h>
 #include <backtrace.h>
 #include <cxxabi.h> // for demangling C++ symbols
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_MALLOC(size) GetMemory(size)
+#define STBI_REALLOC(p,nsize) GetResizedMemory(p,nsize)
+#define STBI_FREE(p) FreeMemory(p)
+#include "stb_image.h"
+
+#ifdef __unix__
+#include <libgen.h>
+#endif
 
 int parm_compression;
 int myargc;
@@ -48,9 +57,9 @@ static int bt_pcinfo_callback( void *data, uintptr_t pc, const char *filename, i
 			function = name;
 		}
 
-		const char* fileNameNeo = strstr(filename, "/neo/");
-		if (fileNameNeo != NULL) {
-			filename = fileNameNeo+1; // I want "neo/bla/blub.cpp:42"
+		const char* fileNameSrc = strstr(filename, "/src/");
+		if (fileNameSrc != NULL) {
+			filename = fileNameSrc+1; // I want "neo/bla/blub.cpp:42"
 		}
         Printf("  %zu %s:%d %s", pc, filename, lineno, function);
 		free(name);
@@ -180,7 +189,7 @@ float LittleFloat(float f)
 	return out.f;
 }
 
-bool LoadJSON(json& data, const string_t& path)
+bool LoadJSON(json& data, const std::string& path)
 {
 	FileStream file;
 	if (!FileExists(path.c_str())) {
@@ -488,6 +497,49 @@ bool IsAbsolutePath(const char *path)
 	return strrchr(path, PATH_SEP) == NULL;
 }
 
+const char *CurrentDirName(void)
+{
+	static char pwd[ MAX_OSPATH ];
+	if (pwd[0])
+		return pwd;
+
+#ifdef _WIN32
+	TCHAR	buffer[ MAX_OSPATH ];
+	char *s;
+
+	GetModuleFileName( NULL, buffer, arraylen( buffer ) );
+	buffer[ arraylen( buffer ) - 1 ] = '\0';
+
+	N_strncpyz( pwd, WtoA( buffer ), sizeof( pwd ) );
+
+	s = strrchr( pwd, PATH_SEP );
+	if ( s ) 
+		*s = '\0';
+	else // bogus case?
+	{
+		_getcwd( pwd, sizeof( pwd ) - 1 );
+		pwd[ sizeof( pwd ) - 1 ] = '\0';
+	}
+
+	return pwd;
+#else
+	// more reliable, linux-specific
+	if ( readlink( "/proc/self/exe", pwd, sizeof( pwd ) - 1 ) != -1 )
+	{
+		pwd[ sizeof( pwd ) - 1 ] = '\0';
+		dirname( pwd );
+		return pwd;
+	}
+
+	if ( !getcwd( pwd, sizeof( pwd ) ) )
+	{
+		pwd[0] = '\0';
+	}
+
+	return pwd;
+#endif
+}
+
 char *CopyString(const char *s)
 {
 	if (!s) {
@@ -500,7 +552,7 @@ void *GetMemory(uint64_t size)
 {
 	void *buf;
 
-	buf = Mem_Alloc(size);
+	buf = malloc(size);
 	if (!buf) {
 		Error("GetMemory: out of memory!");
 	}
@@ -512,7 +564,7 @@ void *GetResizedMemory(void *ptr, uint64_t nsize)
 {
 	void *buf;
 
-	buf = Mem_Realloc(ptr, nsize);
+	buf = realloc(ptr, nsize);
 	if (!buf) {
 		Error("GetResizedMemory: out of memory!");
 	}
@@ -527,7 +579,7 @@ void *GetClearedMemory(uint64_t size)
 
 void FreeMemory(void *ptr)
 {
-	Mem_Free(ptr);
+	free(ptr);
 }
 
 int GetParm(const char *parm)

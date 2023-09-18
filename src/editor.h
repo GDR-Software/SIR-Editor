@@ -8,9 +8,10 @@
 class CFileEntry
 {
 public:
-	string_t mPath;
-	list_t<CFileEntry> mDirList;
-	const bool mIsDir;
+	std::string mPath;
+	std::vector<CFileEntry> mDirList;
+	bool mIsDir;
+	CFileEntry *mParentDir;
 
 	CFileEntry(const std::filesystem::path& path, bool isDir)
 		: mPath{ path.c_str() }, mDirList{}, mIsDir{ isDir } { }
@@ -20,26 +21,46 @@ public:
 class CWidget
 {
 public:
-	string_t mName;
+	std::string mName;
 	void (*mDrawFunc)(CWidget *self);
 	uint32_t mFlags;
 	bool mActive;
 
 	CWidget(const char *name, void (*draw)(CWidget *self), uint32_t flags)
-		: mName{ name }, mDrawFunc{ draw }, mFlags{ flags }, mActive{ true } { }
+		: mName{ name }, mDrawFunc{ draw }, mFlags{ flags }, mActive{ false } { }
 };
 
 class CPopup
 {
 public:
-	string_t mName;
-	string_t mMsg;
+	std::string mName;
+	std::string mMsg;
 	bool mOpen;
 
 	CPopup(const char *name, const char *msg)
 		: mName{ name }, mMsg{ msg }, mOpen{ false } { }
 	CPopup(void) { }
 	~CPopup() { }
+};
+
+class CFileBrowser
+{
+public:
+	std::filesystem::path mCurrentDir;
+	std::filesystem::path mParentDir;
+	std::filesystem::path mCurrentPath;
+	bool mActive;
+	int mCurrent;
+	CFileEntry *mCurDir = NULL;
+
+	CFileBrowser(const std::filesystem::path& dir)
+		: mCurrentDir{ dir }, mParentDir{}, mCurrentPath{ mCurrentDir }, mActive{ false }, mCurrent{ 0 } { }
+	CFileBrowser(void)
+		: mCurrentDir{ CurrentDirName() }, mParentDir{}, mCurrentPath{ mCurrentDir }, mActive{ false }, mCurrent{ 0 } { }
+	~CFileBrowser() { }
+
+	void LoadFiles(void);
+	CFileEntry Draw(const char *action);
 };
 
 class CEditor
@@ -54,17 +75,16 @@ public:
 	static void AddPopup(const CPopup& popup);
 	static CWidget *PushWidget(const CWidget& widget);
 
-	list_t<CFileEntry> mFileCache;
-	vector_t<CWidget> mWidgets;
-	list_t<CPopup> mPopups;
+	std::vector<CFileEntry> mFileCache;
+	std::vector<CWidget> mWidgets;
+	std::list<CPopup> mPopups;
 	bool mConsoleActive;
 	CGameConfig *mConfig;
 };
 
-CFileEntry *Draw_FileList(list_t<CFileEntry>& fileList);
+inline const std::filesystem::path pwdString = std::filesystem::current_path();
 
-extern CWidget *OpenProject;
-extern CWidget *Preferences;
+CFileEntry *Draw_FileList(std::list<CFileEntry>& fileList);
 extern CEditor *editor;
 
 #endif

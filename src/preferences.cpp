@@ -15,8 +15,8 @@ CPrefs::~CPrefs()
 
 static void PrintPrefs_f(void)
 {
-    const vector_t<CPrefData>& prefList = editor->mConfig->mPrefs.mPrefList;
-    for (vector_t<CPrefData>::const_iterator it = prefList.cbegin(); it != prefList.cend(); ++it) {
+    const std::vector<CPrefData>& prefList = editor->mConfig->mPrefs.mPrefList;
+    for (std::vector<CPrefData>::const_iterator it = prefList.cbegin(); it != prefList.cend(); ++it) {
         Printf(
             "[%s] =>\n"
             "\tValue: %s\n"
@@ -25,10 +25,7 @@ static void PrintPrefs_f(void)
     }
 }
 
-inline const char* GetString(const json& data)
-{ return data.get<string_t>().c_str(); }
-
-void CPrefs::LoadPrefs(const string_t& path)
+void CPrefs::LoadPrefs(const std::string& path)
 {
     json data;
     if (!LoadJSON(data, path)) {
@@ -40,17 +37,17 @@ void CPrefs::LoadPrefs(const string_t& path)
     mFilePath = path;
 
     mPrefList.reserve(data["config"].size());
-    mPrefList.emplace_back("enginePath", GetString(data["config"]["enginePath"]), "config");
-    mPrefList.emplace_back("exePath", GetString(data["config"]["exePath"]), "config");
+    mPrefList.emplace_back("enginePath", data["config"]["enginePath"].get<std::string>().c_str(), "config");
+    mPrefList.emplace_back("exePath", data["config"]["exePath"].get<std::string>().c_str(), "config");
 
     mPrefList.reserve(data["graphics"].size());
-    mPrefList.emplace_back("textureDetail", GetString(data["graphics"]["textureDetail"]), "config");
-    mPrefList.emplace_back("textureFiltering", GetString(data["graphics"]["textureFiltering"]), "config");
+    mPrefList.emplace_back("textureDetail", data["graphics"]["textureDetail"].get<std::string>().c_str(), "config");
+    mPrefList.emplace_back("textureFiltering", data["graphics"]["textureFiltering"].get<std::string>().c_str(), "config");
 
     mPrefList.reserve(data["camera"].size());
-    mPrefList.emplace_back("moveSpeed", GetString(data["camera"]["moveSpeed"]), "camera");
-    mPrefList.emplace_back("rotationSpeed", GetString(data["camera"]["rotationSpeed"]), "camera");
-    mPrefList.emplace_back("zoomSpeed", GetString(data["camera"]["zoomSpeed"]), "camera");
+    mPrefList.emplace_back("moveSpeed", data["camera"]["moveSpeed"].get<std::string>().c_str(), "camera");
+    mPrefList.emplace_back("rotationSpeed", data["camera"]["rotationSpeed"].get<std::string>().c_str(), "camera");
+    mPrefList.emplace_back("zoomSpeed", data["camera"]["zoomSpeed"].get<std::string>().c_str(), "camera");
 }
 
 void CPrefs::SetDefault(void)
@@ -102,21 +99,21 @@ CGameConfig::CGameConfig(void)
     Cmd_AddCommand("preflist", PrintPrefs_f);
 
     Printf("[CGameConfig::Init] initializing current configuration");
-    mEditorPath = "Data/";
+    mEditorPath = pwdString.string() + "/Data/";
 
     mPrefs.LoadPrefs("Data/preferences.json");
 
     mEnginePath = mPrefs["enginePath"];
     mExecutablePath = mPrefs["exePath"];
 
-    mTextureDetail = atoi(mPrefs["textureDetail"].c_str());
-    mTextureFiltering = atoi(mPrefs["textureFiltering"].c_str());
+    mTextureDetail = StringToInt(mPrefs["textureDetail"], texture_details, arraylen(texture_details));
+    mTextureFiltering = StringToInt(mPrefs["textureFiltering"], texture_filters, arraylen(texture_filters));
 
     mCameraMoveSpeed = atof(mPrefs["moveSpeed"].c_str());
     mCameraRotationSpeed = atof(mPrefs["rotationSpeed"].c_str());
     mCameraZoomSpeed = atof(mPrefs["zoomSpeed"].c_str());
     
-    if (mEnginePath.find_last_of(GLNOMAD_ENGINE) != eastl::string::npos) {
+    if (mEnginePath.find_last_of(GLNOMAD_ENGINE) != std::string::npos) {
         mEngineName = GLNOMAD_ENGINE;
     }
     else {

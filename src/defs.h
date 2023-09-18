@@ -25,12 +25,32 @@ inline const char *WtoA( const LPWSTR s )
 #endif
 #endif
 
+#ifndef INLINE
+    #ifdef _MSC_VER
+        #define INLINE __forceinline
+    #elif defined(__GNUC__) || defined(__MINGW32__) || defined(__MINGW64__)
+        #define INLINE __attribute__((always_inline)) inline
+    #else
+        #ifdef __cplusplus
+            #if __cplusplus >= 201703L
+                #define INLINE [[gnu::always_inline]] inline
+            #else
+                #define INLINE __inline
+            #endif
+        #else
+            #define INLINE __inline
+        #endif
+    #endif
+#endif
+
 using json = nlohmann::json;
 using string_t = eastl::basic_string<char, heap_allocator>;
 template<typename T>
 using vector_t = eastl::vector<T, heap_allocator>;
 template<typename T>
 using list_t = eastl::list<T, heap_allocator>;
+template<typename T>
+using stack_t = eastl::stack<T, vector_t<T>>;
 
 #ifndef MAX_GDR_PATH
 #define MAX_GDR_PATH 64

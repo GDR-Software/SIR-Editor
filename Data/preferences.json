@@ -5,8 +5,8 @@
         "zoomSpeed": "1.5f"
     },
     "config": {
-        "enginePath": "",
-        "exePath": ""
+        "enginePath": "/home/noah/Projects/gl-nomad/glnomad",
+        "exePath": "/home/noah/Projects/gl-nomad/"
     },
     "graphics": {
         "textureDetail": "2",

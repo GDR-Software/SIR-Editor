@@ -120,9 +120,8 @@ typedef struct {
 
 typedef struct {
     float brightness;
-    float radius;
     float origin[3];
-    float color[4];
+    byte color[4];
 } maplight_t;
 
 typedef struct {
