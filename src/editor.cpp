@@ -210,6 +210,7 @@ void CEditor::Draw(void)
 
     if (ImGuiFileDialog::Instance()->IsOpened("SelectEnginePathDlg")) {
         if (ImGuiFileDialog::Instance()->Display("SelectEnginePathDlg")) {
+            ImGui::SetWindowSize(ImVec2( 641, 1012 ));
             if (ImGuiFileDialog::Instance()->IsOk()) {
                 enginePath.mPath = ImGuiFileDialog::Instance()->GetFilePathName();
                 enginePathChanged = true;
@@ -219,6 +220,7 @@ void CEditor::Draw(void)
     }
     if (ImGuiFileDialog::Instance()->IsOpened("SelectExePathDlg")) {
         if (ImGuiFileDialog::Instance()->Display("SelectExePathDlg")) {
+            ImGui::SetWindowSize(ImVec2( 641, 1012 ));
             if (ImGuiFileDialog::Instance()->IsOk()) {
                 exePath.mPath = ImGuiFileDialog::Instance()->GetFilePathName();
                 exePathChanged = true;

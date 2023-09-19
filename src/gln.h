@@ -198,6 +198,7 @@ Editor-specific stuff
 #include "editor.h"
 #include "ImGuiFileDialog.h"
 #include "map.h"
+#include "parse.h"
 
 #if 0
 #undef new
