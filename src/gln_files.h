@@ -126,14 +126,13 @@ typedef struct {
 
 typedef struct {
     uint32_t index;
-    uint32_t pos[2];
+    uvec3_t pos;
     float **texcoords;
 } maptile_t;
 
 typedef struct {
-    float pos[2];
-    float texcoords[2];
-    float sprite;
+    vec3_t xyz;
+    vec2_t uv;
     byte color[4];
 } mapvert_t;
 
@@ -162,12 +161,11 @@ typedef struct {
 } maptileset_t;
 
 typedef struct {
-    uint32_t x;
-    uint32_t y;
+    uvec3_t xyz;
 } mapcheckpoint_t;
 
 typedef struct {
-    uint32_t pos[2];
+    uvec3_t xyz;
     uint32_t entitytype;
     uint32_t entityid;
 } mapspawn_t;

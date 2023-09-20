@@ -52,6 +52,20 @@ using list_t = eastl::list<T, heap_allocator>;
 template<typename T>
 using stack_t = eastl::stack<T, vector_t<T>>;
 
+typedef float vec_t;
+typedef vec_t vec2_t[2];
+typedef vec_t vec3_t[3];
+typedef vec_t vec4_t[4];
+typedef int32_t ivec_t;
+typedef ivec_t ivec2_t[2];
+typedef ivec_t ivec3_t[3];
+typedef ivec_t ivec4_t[4];
+typedef uint32_t uvec_t;
+typedef uvec_t uvec2_t[2];
+typedef uvec_t uvec3_t[3];
+typedef uvec_t uvec4_t[4];
+
+
 #ifndef MAX_GDR_PATH
 #define MAX_GDR_PATH 64
 #endif

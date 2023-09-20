@@ -185,7 +185,7 @@ void Cmd_AddCommand(const char *name, cmdfunc_t func)
         return;
     }
 
-    cmd = (CCommand *)Allocate<CCommand>(name, func);
+    cmd = new CCommand(name, func);
     cmd->mName = name;
     cmd->mFunc = func;
     cmd->mNext = cmdlist;

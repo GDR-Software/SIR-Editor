@@ -392,6 +392,41 @@ static void PollCommands(const char *input)
     Cmd_ExecuteText(input);
 }
 
+static void DrawMap(void)
+{
+    uint32_t numVertices;
+    Vertex *v;
+
+    numVertices = 0;
+    v = gui->mVertices;
+
+    nglUseProgram(shaderId);
+    nglBindVertexArray(vaoId);
+    nglBindBuffer(GL_ARRAY_BUFFER, vboId);
+    for (uint32_t y = 0; y < mapData.mHeight; y++) {
+        for (uint32_t x = 0; x < mapData.mWidth; x++) {
+            ConvertCoords(v, { x - (mapData.mWidth * 0.5f), mapData.mHeight - y });
+
+            if (numVertices + 6 >= NUM_VERTICES) {
+                nglBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
+                nglDrawArrays(GL_TRIANGLE_FAN, 0, numVertices);
+                v = gui->mVertices;
+                numVertices = 0;
+            }
+
+            for (uint32_t i = 0; i < 4; i++, numVertices++) {
+            }
+        }
+    }
+    if (numVertices) {
+        nglBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
+        nglDrawArrays(GL_TRIANGLE_FAN, 0, numVertices);
+    }
+    nglBindBuffer(GL_ARRAY_BUFFER, 0);
+    nglBindVertexArray(0);
+    nglUseProgram(0);
+}
+
 void Window::EndFrame(void)
 {
     if (editor->mConsoleActive) {
@@ -414,6 +449,8 @@ void Window::EndFrame(void)
         ImGui::SetWindowSize(windowSize);
         ImGui::SetWindowPos(windowPos);
     }
+
+    DrawMap();
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

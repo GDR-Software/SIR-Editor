@@ -197,6 +197,7 @@ Editor-specific stuff
 #include "preferences.h"
 #include "editor.h"
 #include "ImGuiFileDialog.h"
+#include "entity.h"
 #include "map.h"
 #include "parse.h"
 

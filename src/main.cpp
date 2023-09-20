@@ -2,13 +2,19 @@
 
 int main(int argc, char **argv)
 {
-    Mem_Init();
-    atexit(Mem_Shutdown);
-
-    gui = Allocate<Window>();
-    editor = Allocate<CEditor>();
+    gui = new Window;
+    editor = new CEditor;
 
     editor->ReloadFileCache();
+    editor->mConfig->LoadMobList();
+
+    // if we're given something from the command line, load it up
+    if (argv[1] && N_stricmp(GetExtension(argv[1]), "map")) {
+        Map_Load(argv[1]);
+    }
+    else {
+        Map_New();
+    }
 
     while (1) {
         gui->BeginFrame();

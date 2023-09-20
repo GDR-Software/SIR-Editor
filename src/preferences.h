@@ -42,6 +42,15 @@ public:
     std::vector<CPrefData> mPrefList;
 };
 
+typedef struct mobinfo_s {
+    std::string mName;
+    uint32_t mId;
+
+    mobinfo_s(const std::string& name, uint32_t id)
+        : mName{ name }, mId{ id } { }
+    ~mobinfo_s() { }
+} mobinfo_t;
+
 class CGameConfig
 {
 public:
@@ -50,6 +59,9 @@ public:
     ~CGameConfig();
 
     void Dump(void);
+    void LoadMobList(void);
+
+    std::vector<mobinfo_t> mMobList;
 
     std::string mEditorPath; // editor's internal save path
     std::string mEnginePath; // path to the engine

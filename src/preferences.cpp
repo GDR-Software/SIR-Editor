@@ -39,6 +39,7 @@ void CPrefs::LoadPrefs(const std::string& path)
     mPrefList.reserve(data["config"].size());
     mPrefList.emplace_back("enginePath", data["config"]["enginePath"].get<std::string>().c_str(), "config");
     mPrefList.emplace_back("exePath", data["config"]["exePath"].get<std::string>().c_str(), "config");
+    mPrefList.emplace_back("editorPath", data["config"]["editorPath"].get<std::string>().c_str(), "config");
 
     mPrefList.reserve(data["graphics"].size());
     mPrefList.emplace_back("textureDetail", data["graphics"]["textureDetail"].get<std::string>().c_str(), "config");
@@ -66,7 +67,7 @@ void CPrefs::SetDefault(void)
 void CPrefs::SavePrefs(void) const
 {
     json data;
-    std::ofstream file("Data/preferences.json", std::ios::out);
+    std::ofstream file("preferences.json", std::ios::out);
 
     Printf("[CPrefs::SavePrefs] saving preferences...");
 
@@ -94,17 +95,43 @@ void CPrefs::SavePrefs(void) const
     file.close();
 }
 
+void CGameConfig::LoadMobList(void)
+{
+    json data;
+    std::filesystem::path path;
+
+    path = editor->mConfig->mEditorPath + "moblist.json";
+
+    Printf("[CGameConfig::LoadMobList] loading mob list...");
+
+    if (!LoadJSON(data, path.c_str())) {
+        Error("[CGameConfig::LoadMobList] failed to load mob list file");
+    }
+
+    mMobList.reserve(data["list"].size());
+    for (const auto& it : data["list"]) {
+        mMobList.emplace_back(it["name"].get<std::string>().c_str(), static_cast<uint32_t>(it["id"].get<uint64_t>()));
+    }
+}
+
 CGameConfig::CGameConfig(void)
 {
     Cmd_AddCommand("preflist", PrintPrefs_f);
 
-    Printf("[CGameConfig::Init] initializing current configuration");
-    mEditorPath = pwdString.string() + "/Data/";
+    Printf("[CGameConfig::Init] intializing current configuration");
 
-    mPrefs.LoadPrefs("Data/preferences.json");
+    mPrefs.LoadPrefs("preferences.json");
 
     mEnginePath = mPrefs["enginePath"];
     mExecutablePath = mPrefs["exePath"];
+    mEditorPath = mPrefs["editorPath"];
+
+    if (mEditorPath.back() != PATH_SEP) {
+        mEditorPath.push_back(PATH_SEP);
+    }
+    if (mEnginePath.back() != PATH_SEP) {
+        mEnginePath.push_back(PATH_SEP);
+    }
 
     mTextureDetail = StringToInt(mPrefs["textureDetail"], texture_details, arraylen(texture_details));
     mTextureFiltering = StringToInt(mPrefs["textureFiltering"], texture_filters, arraylen(texture_filters));
@@ -113,7 +140,7 @@ CGameConfig::CGameConfig(void)
     mCameraRotationSpeed = atof(mPrefs["rotationSpeed"].c_str());
     mCameraZoomSpeed = atof(mPrefs["zoomSpeed"].c_str());
     
-    if (mEnginePath.find_last_of(GLNOMAD_ENGINE) != std::string::npos) {
+    if (N_stristr(mEnginePath.c_str(), GLNOMAD_EXE)) {
         mEngineName = GLNOMAD_ENGINE;
     }
     else {
