@@ -100,11 +100,13 @@ typedef struct {
 #define MAP_IDENT (('#'<<24)+('P'<<16)+('A'<<8)+'M')
 #define MAP_VERSION 1
 
-#define MAX_MAP_SPAWNS 0x8000
-#define MAX_MAP_CHECKPOINTS 0x200
-#define MAX_MAP_LIGHTS 0x800
+#define MAX_MAP_SPAWNS 1024
+#define MAX_MAP_CHECKPOINTS 256
+#define MAX_MAP_LIGHTS 1024
 
-#define MAX_MAP_TILES 0x800000
+#define MAX_MAP_WIDTH 1024
+#define MAX_MAP_HEIGHT 1024
+#define MAX_MAP_TILES (MAX_MAP_WIDTH*MAX_MAP_HEIGHT)
 #define MAX_MAP_VERTICES (MAX_MAP_TILES*4)
 #define MAX_MAP_INDICES (MAX_MAP_TILES*6)
 
@@ -126,6 +128,7 @@ typedef struct {
 
 typedef struct {
     uint32_t index;
+    uint32_t flags;
     uvec3_t pos;
     float **texcoords;
 } maptile_t;

@@ -12,7 +12,6 @@ DEPS=\
 	$(O)/imgui.o \
 	$(O)/imgui_impl_sdl2.o \
 	$(O)/imgui_impl_opengl3.o \
-	$(O)/glad.o \
 
 OBJS=\
 	$(O)/main.o \

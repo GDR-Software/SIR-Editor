@@ -3,6 +3,28 @@
 CEditor *editor;
 static CPopup *curPopup;
 
+static INLINE float clamp(float value, float min, float max)
+{
+    if (value > max) {
+        value = max;
+    }
+    else if (value < min) {
+        value = min;
+    }
+    return value;
+}
+
+static INLINE int32_t clamp(int32_t value, int32_t min, int32_t max)
+{
+    if (value > max) {
+        value = max;
+    }
+    else if (value < min) {
+        value = min;
+    }
+    return value;
+}
+
 static bool Draw_Directory(CFileEntry *entry);
 
 static inline bool ItemWithTooltip(const char *item_name, const char *fmt, ...)
@@ -83,19 +105,6 @@ void CEditor::ReloadFileCache(void)
 {
     Printf("[CEditor::ReloadFileCache] reloading file cache...");
     RecursiveDirectoryIterator(mConfig->mEditorPath.c_str(), mFileCache);
-}
-
-static void Draw_Widgets(void)
-{
-    std::vector<CWidget>& widgets = editor->mWidgets;
-
-    for (auto& it : widgets) {
-        if (it.mActive) {
-            it.mActive = ImGui::Begin(it.mName.c_str(), &it.mActive, it.mFlags);
-            it.mDrawFunc(std::addressof(it));
-            ImGui::End();
-        }
-    }
 }
 
 static void Draw_Popups(void)
@@ -186,8 +195,6 @@ static void Build_Menu(void)
 
 void CEditor::AddPopup(const CPopup& popup)
 { editor->mPopups.emplace_back(popup); }
-CWidget *CEditor::PushWidget(const CWidget& widget)
-{ return std::addressof(editor->mWidgets.emplace_back(widget)); }
 
 static CFileEntry enginePath{std::string(pwdString.string() + "Data/glnomad" EXE_EXT).c_str(), false};
 static CFileEntry exePath{std::string(pwdString.string() + "Data/").c_str(), true};
@@ -215,8 +222,6 @@ void CEditor::Draw(void)
         ImGui::EndMainMenuBar();
     }
     Draw_Popups();
-    Draw_Widgets();
-
     Edit_Checkpoint();
     Edit_Spawn();
 
@@ -337,11 +342,33 @@ namespace MapSpawn {
 static int x = 0;
 static int y = 0;
 static int z = 0;
+static int entityType = ET_AIR;
+static int entityId = -1;
 static bool changedX = false;
 static bool changedY = false;
 static bool changedZ = false;
 
 };
+
+static const char *EntityTypeString(int type)
+{
+    switch (type) {
+    case ET_PLAYR:
+        return "Player";
+    case ET_MOB:
+        return "Mob";
+    case ET_BOT:
+        return "Bot";
+    case ET_ITEM:
+        return "Item";
+    case ET_WEAPON:
+        return "Weapon";
+    case ET_AIR:
+        return "Air (Nothing, An Invalid Spawn)";
+    };
+    Error("Invalid entity type: %i", type);
+    return "";
+}
 
 static void Edit_Spawn(void)
 {
@@ -370,7 +397,48 @@ static void Edit_Spawn(void)
         if (ImGui::InputInt("y", &y)) {
             changedY = true;
         }
+        if (ImGui::BeginMenu("Select Entity Type")) {
+            if (ImGui::MenuItem("Player")) {
+                entityType = ET_PLAYR;
+            }
+            if (ImGui::MenuItem("Mob")) {
+                entityType = ET_MOB;
+            }
+            if (ImGui::MenuItem("Bot")) {
+                entityType = ET_BOT;
+            }
+            if (ImGui::MenuItem("Item")) {
+                entityType = ET_ITEM;
+            }
+            if (ImGui::MenuItem("Weapon")) {
+                entityType = ET_WEAPON;
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::Text("Current Entity Type: %s", EntityTypeString(entityType));
+        if (ImGui::BeginMenu("Select Entity Id")) {
+            if (entityType == ET_PLAYR) {
+                ImGui::MenuItem("N/A");
+            }
+            else if (entityType == ET_MOB) {
+                for (const auto& it : editor->mConfig->mMobList) {
+                    if (ImGui::MenuItem("Name: %-64s Id: %16u", it.mName.c_str(), it.mId)) {
+                        entityId = it.mId;
+                    }
+                }
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::Text("Current Entity Id: %s", entityId != -1 ? va("%i", entityId) : "Invalid");
+
         if (ImGui::Button("Save Spawn")) {
+            int old_x = s->xyz[0];
+            int old_y = s->xyz[1];
+            int old_z = s->xyz[2];
+
+            if (mapData.mTiles[old_y * mapData.mWidth + old_x].flags & TILE_SPAWN) {
+                mapData.mTiles[old_y * mapData.mWidth + old_x].flags &= ~TILE_SPAWN;
+            }
             if (changedX) {
                 changedX = false;
                 s->xyz[0] = x;
@@ -386,6 +454,7 @@ static void Edit_Spawn(void)
                 s->xyz[2] = z;
                 z = 0;
             }
+            mapData.mTiles[s->xyz[1] * mapData.mWidth + s->xyz[0]].flags |= TILE_SPAWN;
             MapPrefs::editingCheckpoints = false;
         }
     }
@@ -403,6 +472,8 @@ static bool changedY = false;
 static bool changedZ = false;
 
 };
+
+//static CWidget editCheckpoint{ Edit_Checkpoint, "Editing Checkpoint %lu##EditCheckpoint" };
 
 static void Edit_Checkpoint(void)
 {
@@ -426,11 +497,21 @@ static void Edit_Checkpoint(void)
         ImGui::SetWindowSize({ 223, 103 });
         if (ImGui::InputInt("x", &MapCheckpoint::x)) {
             MapCheckpoint::changedX = true;
+            MapCheckpoint::x = clamp(MapCheckpoint::x, 0, mapData.mWidth);
         }
         if (ImGui::InputInt("y", &MapCheckpoint::y)) {
             MapCheckpoint::changedY = true;
+            MapCheckpoint::y = clamp(MapCheckpoint::y, 0, mapData.mHeight);
         }
         if (ImGui::Button("Save Checkpoint")) {
+            int old_x = c->xyz[0];
+            int old_y = c->xyz[1];
+            int old_z = c->xyz[2];
+
+            if (mapData.mTiles[old_y * mapData.mWidth + old_x].flags & TILE_CHECKPOINT) {
+                mapData.mTiles[old_y * mapData.mWidth + old_x].flags &= ~TILE_CHECKPOINT;
+            }
+
             if (MapCheckpoint::changedX) {
                 MapCheckpoint::changedX = false;
                 c->xyz[0] = MapCheckpoint::x;
@@ -447,6 +528,8 @@ static void Edit_Checkpoint(void)
                 MapCheckpoint::z = 0;
             }
             MapPrefs::editingCheckpoints = false;
+
+            mapData.mTiles[c->xyz[1] * mapData.mWidth + c->xyz[0]].flags |= TILE_CHECKPOINT;
         }
     }
     ImGui::End();
@@ -511,19 +594,29 @@ static void Edit_Map(void)
         }
     }
     if (ImGui::BeginMenu("Edit Checkpoint")) {
-        for (uint64_t i = 0; i < mapData.mCheckpoints.size(); i++) {
-            if (ImGui::MenuItem(va("Checkpoint #%lu", i))) {
-                MapPrefs::editingCheckpointsIndex = i;
-                MapPrefs::editingCheckpoints = true;
+        if (!mapData.mCheckpoints.size()) {
+            ImGui::MenuItem("No Checkpoints");
+        }
+        else {
+            for (uint64_t i = 0; i < mapData.mCheckpoints.size(); i++) {
+                if (ImGui::MenuItem(va("Checkpoint #%lu", i))) {
+                    MapPrefs::editingCheckpointsIndex = i;
+                    MapPrefs::editingCheckpoints = true;
+                }
             }
         }
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Edit Spawn")) {
-        for (uint64_t i = 0; i < mapData.mSpawns.size(); i++) {
-            if (ImGui::MenuItem(va("Spawn #%lu", i))) {
-                MapPrefs::editingSpawnsIndex = i;
-                MapPrefs::editingSpawns = true;
+        if (!mapData.mSpawns.size()) {
+            ImGui::MenuItem("No Spawns");
+        }
+        else {
+            for (uint64_t i = 0; i < mapData.mSpawns.size(); i++) {
+                if (ImGui::MenuItem(va("Spawn #%lu", i))) {
+                    MapPrefs::editingSpawnsIndex = i;
+                    MapPrefs::editingSpawns = true;
+                }
             }
         }
         ImGui::EndMenu();
@@ -538,23 +631,25 @@ static void Edit_Map(void)
             }
             if (MapPrefs::changedWidth) {
                 mapData.mWidth = MapPrefs::width;
-                MapPrefs::width = 0;
+                MapPrefs::width = 16;
                 mapData.mTiles.resize(mapData.mHeight * mapData.mWidth);
                 MapPrefs::changedWidth = false;
             }
             if (MapPrefs::changedHeight) {
                 mapData.mHeight = MapPrefs::height;
-                MapPrefs::height = 0;
+                MapPrefs::height = 16;
                 mapData.mTiles.resize(mapData.mHeight * mapData.mWidth);
                 MapPrefs::changedHeight = false;
             }
             if (MapPrefs::changedCheckpoints) {
                 mapData.mCheckpoints.resize(MapPrefs::numCheckpoints);
+                memset(mapData.mCheckpoints.data(), 0, sizeof(mapcheckpoint_t) * mapData.mCheckpoints.size());
                 MapPrefs::changedCheckpoints = false;
                 MapPrefs::numCheckpoints = 0;
             }
             if (MapPrefs::changedSpawns) {
                 mapData.mSpawns.resize(MapPrefs::numSpawns);
+                memset(mapData.mSpawns.data(), 0, sizeof(mapspawn_t) * mapData.mSpawns.size());
                 MapPrefs::changedSpawns = false;
                 MapPrefs::numSpawns = 0;
             }

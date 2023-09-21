@@ -18,18 +18,6 @@ public:
 	~CFileEntry() { }
 };
 
-class CWidget
-{
-public:
-	std::string mName;
-	void (*mDrawFunc)(CWidget *self);
-	uint32_t mFlags;
-	bool mActive;
-
-	CWidget(const char *name, void (*draw)(CWidget *self), uint32_t flags)
-		: mName{ name }, mDrawFunc{ draw }, mFlags{ flags }, mActive{ false } { }
-};
-
 class CPopup
 {
 public:
@@ -41,26 +29,6 @@ public:
 		: mName{ name }, mMsg{ msg }, mOpen{ false } { }
 	CPopup(void) { }
 	~CPopup() { }
-};
-
-class CFileBrowser
-{
-public:
-	std::filesystem::path mCurrentDir;
-	std::filesystem::path mParentDir;
-	std::filesystem::path mCurrentPath;
-	bool mActive;
-	int mCurrent;
-	CFileEntry *mCurDir = NULL;
-
-	CFileBrowser(const std::filesystem::path& dir)
-		: mCurrentDir{ dir }, mParentDir{}, mCurrentPath{ mCurrentDir }, mActive{ false }, mCurrent{ 0 } { }
-	CFileBrowser(void)
-		: mCurrentDir{ CurrentDirName() }, mParentDir{}, mCurrentPath{ mCurrentDir }, mActive{ false }, mCurrent{ 0 } { }
-	~CFileBrowser() { }
-
-	void LoadFiles(void);
-	CFileEntry Draw(const char *action);
 };
 
 class CEditor

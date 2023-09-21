@@ -1,3 +1,4 @@
+#define GLAD_GL_IMPLEMENTATION
 #include "gln.h"
 #define STB_RECT_PACK_IMPLEMENTATION
 #include "imstb_rectpack.h"
@@ -7,6 +8,7 @@
 #include <stb/stb_sprintf.h>
 #include "gui.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #define WINDOW_TITLE "GLNomad Level Editor"
 #define WINDOW_WIDTH 1920
@@ -20,6 +22,15 @@ static void Clear_f(void)
     conBuffer.clear();
 }
 
+static void GL_CheckError(void)
+{
+    GLenum error;
+
+    while ((error = glGetError()) != GL_NO_ERROR) {
+        Printf("[OpenGL Error] %u", error);
+    }
+}
+
 static void *ImGui_MemAlloc(size_t n, void *)
 {
     return GetMemory(n);
@@ -30,7 +41,7 @@ static void ImGui_MemFree(void *ptr, void *)
     FreeMemory(ptr);
 }
 
-static GLuint vaoId, vboId, shaderId;
+static GLuint vaoId, vboId, iboId, shaderId;
 static GLint vpmId;
 
 static void MakeViewMatrix(Window *context = gui)
@@ -47,10 +58,10 @@ static void CheckProgram(void)
     int success;
     char str[1024];
 
-    nglGetProgramiv(shaderId, GL_LINK_STATUS, &success);
+    glGetProgramiv(shaderId, GL_LINK_STATUS, &success);
     if (success == GL_FALSE) {
         memset(str, 0, sizeof(str));
-        nglGetProgramInfoLog(shaderId, sizeof(str), NULL, str);
+        glGetProgramInfoLog(shaderId, sizeof(str), NULL, str);
 
         Error("[Window::CheckProgram] failed to compile and/or link shader program.\n"
                     "glslang error message: %s", str);
@@ -62,10 +73,10 @@ static void CheckShader(GLuint id, GLenum type)
     int success;
     char str[1024];
 
-    nglGetShaderiv(id, GL_COMPILE_STATUS, &success);
+    glGetShaderiv(id, GL_COMPILE_STATUS, &success);
     if (success == GL_FALSE) {
         memset(str, 0, sizeof(str));
-        nglGetShaderInfoLog(id, sizeof(str), NULL, str);
+        glGetShaderInfoLog(id, sizeof(str), NULL, str);
     
         Error("[Window::CheckShader] failed to compile shader of type %s.\nglslang error message: %s",
             (type == GL_VERTEX_SHADER ? "vertex" : type == GL_FRAGMENT_SHADER ? "fragment" : "unknown shader type"), str);
@@ -76,14 +87,26 @@ static GLuint GenShader(const char *source, GLenum type)
 {
     GLuint id;
 
-    id = nglCreateShader(type);
+    id = glCreateShader(type);
     
-    nglShaderSource(id, 1, &source, NULL);
-    nglCompileShader(id);
+    glShaderSource(id, 1, &source, NULL);
+    glCompileShader(id);
 
     CheckShader(id, type);
 
     return id;
+}
+
+static void GL_ErrorCallback(GLenum source,GLenum type,GLuint id,GLenum severity,GLsizei length,const GLchar *message,const void *userParam)
+{
+    switch (type) {
+    case GL_DEBUG_TYPE_ERROR:
+        Error("[OpenGL error] %u: %s", id, message);
+        break;
+    case GL_DEBUG_TYPE_PERFORMANCE:
+        Printf("[OpenGL perfomance] %u: %s", id, message);
+        break;
+    };
 }
 
 #define NUM_VERTICES 0x80000
@@ -94,13 +117,14 @@ static GLuint GenShader(const char *source, GLenum type)
 static void InitGLObjects(void)
 {
     GLuint vertid, fragid;
+    uint32_t offset;
+    uint32_t *indices;
 
 #if 0
-    uint32_t offset;
-    indices = (uint32_t *)alloca(FRAME_INDICES+1024);
+    indices = (uint32_t *)alloca(sizeof(uint32_t) * NUM_VERTICES);
 
     offset = 0;
-    for (uint32_t i = 0; i < FRAME_INDICES; i += 4) {
+    for (uint32_t i = 0; i < NUM_VERTICES; i += 4) {
         indices[i + 0] = offset + 0;
         indices[i + 1] = offset + 1;
         indices[i + 2] = offset + 2;
@@ -117,69 +141,94 @@ static void InitGLObjects(void)
     "#version 330 core\n"
     "layout(location = 0) in vec3 a_Position;\n"
     "layout(location = 1) in vec2 a_TexCoords;\n"
+    "layout(location = 2) in vec4 a_Color;\n"
+    "layout(location = 3) in float a_SpecialTile;\n"
     "\n"
     "uniform mat4 u_ViewProjection;\n"
+    "\n"
+    "out vec3 v_Position;\n"
     "out vec2 v_TexCoords;\n"
+    "out vec4 v_Color;\n"
+    "out float v_SpecialTile;\n"
     "\n"
     "void main() {\n"
+    "   v_Position = a_Position;\n"
     "   v_TexCoords = a_TexCoords;\n"
+    "   v_Color = a_Color;\n"
+    "   v_SpecialTile = a_SpecialTile;\n"
     "   gl_Position = u_ViewProjection * vec4(a_Position, 1.0);\n"
     "}\n";
     const char *fragShader =
     "#version 330 core\n"
     "out vec4 a_Color;\n"
     "\n"
+    "in vec3 v_Position;\n"
     "in vec2 v_TexCoords;\n"
-    "uniform sampler2D u_Texture;\n"
+    "in vec4 v_Color;\n"
+    "in float v_SpecialTile;\n"
     "\n"
     "void main() {\n"
-    "   a_Color = texture2D(u_Texture, v_TexCoords);\n"
+    "   if (v_SpecialTile == 1.0) {\n"
+    "       a_Color = v_Color;\n"
+    "   }\n"
+    "   else {\n"
+    "       a_Color = vec4(1.0);\n"
+    "   }\n"
     "}\n";
 
     Printf("[Window::InitGLObjects] Allocating OpenGL buffer objects...");
 
-    nglGenVertexArrays(1, &vaoId);
-    nglGenBuffersARB(1, &vboId);
+    glGenVertexArrays(1, &vaoId);
+    glGenBuffers(1, &vboId);
 
-    nglBindVertexArray(vaoId);
-    nglBindBuffer(GL_ARRAY_BUFFER_ARB, vboId);
-    nglBufferData(GL_ARRAY_BUFFER_ARB, sizeof(Vertex) * NUM_VERTICES, NULL, GL_DYNAMIC_DRAW);
+    glBindVertexArray(vaoId);
+    glBindBuffer(GL_ARRAY_BUFFER, vboId);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * NUM_VERTICES, NULL, GL_DYNAMIC_DRAW);
 
-    nglEnableVertexAttribArray(0);
-    nglVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, pos));
+    glEnableVertexAttribArrayARB(0);
+    glVertexAttribPointerARB(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, xyz));
 
-    nglEnableVertexAttribArray(1);
-    nglVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, texcoords));
+    glEnableVertexAttribArrayARB(1);
+    glVertexAttribPointerARB(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, uv));
 
-    nglBindBuffer(GL_ARRAY_BUFFER_ARB, 0);
-    nglBindVertexArray(0);
+    glEnableVertexAttribArrayARB(2);
+    glVertexAttribPointerARB(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, color));
+
+    glEnableVertexAttribArrayARB(3);
+    glVertexAttribPointerARB(3, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, flags));
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 
     Printf("[Window::InitGLObjects] Compiling shaders...");
 
     vertid = GenShader(vertShader, GL_VERTEX_SHADER);
     fragid = GenShader(fragShader, GL_FRAGMENT_SHADER);
 
-    shaderId = nglCreateProgram();
-    nglUseProgram(shaderId);
+    shaderId = glCreateProgram();
 
-    nglAttachShader(shaderId, vertid);
-    nglAttachShader(shaderId, fragid);
-    nglLinkProgram(shaderId);
-    nglValidateProgram(shaderId);
+    glAttachShader(shaderId, vertid);
+    glAttachShader(shaderId, fragid);
+    glLinkProgram(shaderId);
+    glValidateProgram(shaderId);
+
+    glUseProgram(shaderId);
 
     CheckProgram();
 
     Printf("[Window::InitGLObjects] Cleaning up shaders...");
 
-    nglDeleteShader(vertid);
-    nglDeleteShader(fragid);
-    nglUseProgram(0);
+    glDeleteShader(vertid);
+    glDeleteShader(fragid);
+    glUseProgram(0);
 
-    vpmId = nglGetUniformLocation(shaderId, "u_ViewProjection");
+    vpmId = glGetUniformLocation(shaderId, "u_ViewProjection");
     if (vpmId == -1) {
         Error("[Window::InitGLObjects] Failed to find uniform u_ViewProjection");
     }
     Printf("[Window::InitGLObjects] Finished");
+    
+    GL_CheckError();
 }
 
 Window::Window(void)
@@ -207,11 +256,11 @@ Window::Window(void)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
     SDL_GL_SetSwapInterval(-1);
 
-    Printf("[Window::Init] loading ngl procs");
-    load_gl_procs(SDL_GL_GetProcAddress);
-    
-    mVertices = (Vertex *)GetMemory(sizeof(*mVertices) * NUM_VERTICES);
-    InitGLObjects();
+    Printf("[Window::Init] loading gl procs");
+
+    if (!gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress)) {
+        Error("Failed to init GLAD2");
+    }
 
     IMGUI_CHECKVERSION();
     
@@ -226,17 +275,30 @@ Window::Window(void)
     Printf("[Window::Init] ImGui initialized");
     Printf("[Window::Init] OpenGL initialization done");
 
+    mCameraPos = glm::vec3(0.0f);
+    mCameraRotation = 0.0f;
+    mCameraZoom = 1.5f;
     mProjection = glm::ortho(-3.0f, 3.0f, -3.0f, 3.0f, -1.0f, 1.0f);
     MakeViewMatrix(this);
+
+    glEnable(GL_DEBUG_OUTPUT);
+    glEnable(GL_DEBUG_CALLBACK_FUNCTION);
+    glDebugMessageCallback(GL_ErrorCallback, NULL);
+    uint32_t unusedIds = 0;
+    glDebugMessageControlARB(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, (GLuint *)&unusedIds, GL_TRUE);
+
+    mVertices = (Vertex *)GetMemory(sizeof(*mVertices) * NUM_VERTICES);
+    memset(mVertices, 0, sizeof(*mVertices) * NUM_VERTICES);
+    InitGLObjects();
 }
 
 Window::~Window()
 {
     FreeMemory(mVertices);
 
-    nglDeleteVertexArrays(1, &vaoId);
-    nglDeleteBuffersARB(1, &vboId);
-    nglDeleteProgram(shaderId);
+    glDeleteVertexArrays(1, &vaoId);
+    glDeleteBuffers(1, &vboId);
+    glDeleteProgram(shaderId);
 
     ImGui_ImplSDL2_Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
@@ -258,15 +320,15 @@ static void ConvertCoords(Vertex *vertices, const glm::vec2& pos)
     };
 
     for (uint32_t i = 0; i < 4; i++) {
-        vertices[i].pos = mvp * positions[i];
+        vertices[i].xyz = mvp * positions[i];
     }
 }
 
 void Camera_ZoomIn(void)
 {
     gui->mCameraZoom -= editor->mConfig->mCameraZoomSpeed;
-    if (gui->mCameraZoom < 3.0f)
-        gui->mCameraZoom = 3.0f;
+    if (gui->mCameraZoom < 0.5f)
+        gui->mCameraZoom = 0.5f;
 }
 
 void Camera_ZoomOut(void)
@@ -347,23 +409,83 @@ static void PollEvents(void)
 //        Editor::GetProjManager()->GetCurrent()->Save();
 }
 
+static void DrawMap(void)
+{
+    uint32_t numVertices, numIndices;
+    Vertex *v;
+    mapspawn_t *s;
+    mapcheckpoint_t *c;
+
+    numVertices = 0;
+    numIndices = 0;
+    v = gui->mVertices;
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glUseProgram(0);
+    glUseProgram(shaderId);
+    glUniformMatrix4fv(vpmId, 1, GL_FALSE, glm::value_ptr(gui->mViewProjection));
+
+    glBindVertexArray(vaoId);
+    glBindBuffer(GL_ARRAY_BUFFER, vboId);
+    for (uint32_t y = 0; y < mapData.mHeight; y++) {
+        for (uint32_t x = 0; x < mapData.mWidth; x++) {
+            ConvertCoords(v, { x - (mapData.mWidth * 0.5f), mapData.mHeight - y });
+
+            if (numVertices + 6 >= NUM_VERTICES) {
+                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
+                glDrawArrays(GL_TRIANGLE_FAN, 0, numVertices);
+                v = gui->mVertices;
+                numVertices = 0;
+            }
+
+            for (uint32_t i = 0; i < 4; i++) {
+                uint32_t flags = mapData.mTiles[y * mapData.mWidth + x].flags;
+                if (flags & TILE_CHECKPOINT) {
+                    v->color[0] = 0.0f;
+                    v->color[1] = 0.0f;
+                    v->color[2] = 5.0f;
+                    v->color[3] = 1.0f;
+                    v->flags = 1.0f;
+                }
+                else {
+                    v->flags = 0.0f;
+                }
+            }
+
+            v += 4;
+            numVertices += 4;
+            GL_CheckError();
+        }
+    }
+    if (numVertices || numIndices) {
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, numVertices);
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    glUseProgram(0);
+    GL_CheckError();
+}
+
 void Window::BeginFrame(void)
 {
-    nglClear(GL_COLOR_BUFFER_BIT);
-    nglClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-    nglViewport(0, 0, 1980, 1080);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
-    events.EventLoop();
-
-    MakeViewMatrix();
+    MakeViewMatrix(this);
 
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize.x = 1920;
-    io.DisplaySize.y = 1080;
+    io.DisplaySize.x = WINDOW_WIDTH;
+    io.DisplaySize.y = WINDOW_HEIGHT;
 
     ImGui::NewFrame();
     ImGui_ImplSDL2_NewFrame();
     ImGui_ImplOpenGL3_NewFrame();
+
+    DrawMap();
 }
 
 void Window::Print(const char *fmt, ...)
@@ -392,41 +514,6 @@ static void PollCommands(const char *input)
     Cmd_ExecuteText(input);
 }
 
-static void DrawMap(void)
-{
-    uint32_t numVertices;
-    Vertex *v;
-
-    numVertices = 0;
-    v = gui->mVertices;
-
-    nglUseProgram(shaderId);
-    nglBindVertexArray(vaoId);
-    nglBindBuffer(GL_ARRAY_BUFFER, vboId);
-    for (uint32_t y = 0; y < mapData.mHeight; y++) {
-        for (uint32_t x = 0; x < mapData.mWidth; x++) {
-            ConvertCoords(v, { x - (mapData.mWidth * 0.5f), mapData.mHeight - y });
-
-            if (numVertices + 6 >= NUM_VERTICES) {
-                nglBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
-                nglDrawArrays(GL_TRIANGLE_FAN, 0, numVertices);
-                v = gui->mVertices;
-                numVertices = 0;
-            }
-
-            for (uint32_t i = 0; i < 4; i++, numVertices++) {
-            }
-        }
-    }
-    if (numVertices) {
-        nglBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
-        nglDrawArrays(GL_TRIANGLE_FAN, 0, numVertices);
-    }
-    nglBindBuffer(GL_ARRAY_BUFFER, 0);
-    nglBindVertexArray(0);
-    nglUseProgram(0);
-}
-
 void Window::EndFrame(void)
 {
     if (editor->mConsoleActive) {
@@ -449,8 +536,7 @@ void Window::EndFrame(void)
         ImGui::SetWindowSize(windowSize);
         ImGui::SetWindowPos(windowPos);
     }
-
-    DrawMap();
+    PollEvents();
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

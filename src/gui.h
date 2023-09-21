@@ -5,10 +5,10 @@
 
 struct Vertex
 {
-    glm::vec3 pos;
-    glm::vec2 texcoords;
+    glm::vec3 xyz;
+    glm::vec2 uv;
     glm::vec4 color;
-    float empty;
+    float flags;
 };
 
 class Window

@@ -8,8 +8,8 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdint.h>
+#include "gl.h"
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
 #include <memory>
 #include <string>
 #include <fstream>
@@ -189,8 +189,8 @@ All the random shit I pulled from GtkRadiant into this project
 /*
 Editor-specific stuff
 */
+#include "widget.h"
 #include "gln_files.h"
-#include "ngl.h"
 #include "command.h"
 #include "events.h"
 #include "gui.h"
