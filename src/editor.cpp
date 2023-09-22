@@ -161,6 +161,9 @@ static void File_Menu(void)
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Open Recent")) {
+        if (ImGui::MenuItem("Open Map")) {
+            ImGuiFileDialog::Instance()->OpenDialog("SelectMapDlg", "Select File", ".*, .map, .bmf", editor->mConfig->mEditorPath);
+        }
         ImGui::EndMenu();
     }
 }
@@ -200,6 +203,7 @@ static CFileEntry enginePath{std::string(pwdString.string() + "Data/glnomad" EXE
 static CFileEntry exePath{std::string(pwdString.string() + "Data/").c_str(), true};
 static bool exePathChanged = false;
 static bool enginePathChanged = false;
+static const ImVec2 FileDlgWindowSize = ImVec2( 1012, 641 );
 
 void CEditor::Draw(void)
 {
@@ -226,7 +230,7 @@ void CEditor::Draw(void)
     Edit_Spawn();
 
     if (ImGuiFileDialog::Instance()->IsOpened("SelectEnginePathDlg")) {
-        if (ImGuiFileDialog::Instance()->Display("SelectEnginePathDlg", ImGuiWindowFlags_NoResize, ImVec2( 1012, 641 ), ImVec2( 1012, 641 ))) {
+        if (ImGuiFileDialog::Instance()->Display("SelectEnginePathDlg", ImGuiWindowFlags_NoResize, FileDlgWindowSize, FileDlgWindowSize)) {
             if (ImGuiFileDialog::Instance()->IsOk()) {
                 enginePath.mPath = ImGuiFileDialog::Instance()->GetFilePathName();
                 enginePathChanged = true;
@@ -235,11 +239,19 @@ void CEditor::Draw(void)
         }
     }
     if (ImGuiFileDialog::Instance()->IsOpened("SelectExePathDlg")) {
-        if (ImGuiFileDialog::Instance()->Display("SelectExePathDlg", ImGuiWindowFlags_NoResize, ImVec2( 1012, 641 ), ImVec2( 1012, 641 ))) {
-            ImGui::SetWindowSize(ImVec2( 641, 1012 ));
+        if (ImGuiFileDialog::Instance()->Display("SelectExePathDlg", ImGuiWindowFlags_NoResize, FileDlgWindowSize, FileDlgWindowSize)) {
             if (ImGuiFileDialog::Instance()->IsOk()) {
                 exePath.mPath = ImGuiFileDialog::Instance()->GetFilePathName();
                 exePathChanged = true;
+            }
+            ImGuiFileDialog::Instance()->Close();
+        }
+    }
+    if (ImGuiFileDialog::Instance()->IsOpened("SelectMapDlg")) {
+        if (ImGuiFileDialog::Instance()->Display("SelectMapDlg", ImGuiWindowFlags_NoResize, FileDlgWindowSize, FileDlgWindowSize)) {
+            if (ImGuiFileDialog::Instance()->IsOk()) {
+                const std::string path = ImGuiFileDialog::Instance()->GetFilePathName();
+                Map_Load(path.c_str());
             }
             ImGuiFileDialog::Instance()->Close();
         }

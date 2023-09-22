@@ -23,7 +23,8 @@ OBJS=\
 	$(O)/command.o \
 	$(O)/preferences.o \
 	$(O)/map.o \
-	$(O)/ngl_proc.o \
+	$(O)/parse.o \
+	$(O)/Texture.o \
 	$(O)/ImGuiFileDialog.o \
 
 $(O)/%.o: src/%.cpp

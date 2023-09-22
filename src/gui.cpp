@@ -42,7 +42,7 @@ static void ImGui_MemFree(void *ptr, void *)
 }
 
 static GLuint vaoId, vboId, iboId, shaderId;
-static GLint vpmId;
+static GLint vpmId, checkpointId;
 
 static void MakeViewMatrix(Window *context = gui)
 {
@@ -97,6 +97,15 @@ static GLuint GenShader(const char *source, GLenum type)
     return id;
 }
 
+static GLint GetUniform(const char *name)
+{
+    GLint location = glGetUniformLocation(shaderId, name);
+    if (location == -1) {
+        Error("Failed to find uniform %s in shader!", name);
+    }
+    return location;
+}
+
 static void GL_ErrorCallback(GLenum source,GLenum type,GLuint id,GLenum severity,GLsizei length,const GLchar *message,const void *userParam)
 {
     switch (type) {
@@ -109,81 +118,63 @@ static void GL_ErrorCallback(GLenum source,GLenum type,GLuint id,GLenum severity
     };
 }
 
-#define NUM_VERTICES 0x80000
-#define FRAME_QUADS 0x2000
+#define FRAME_QUADS 0x8000
 #define FRAME_VERTICES (FRAME_QUADS*4)
 #define FRAME_INDICES (FRAME_QUADS*6)
 
 static void InitGLObjects(void)
 {
     GLuint vertid, fragid;
-    uint32_t offset;
-    uint32_t *indices;
 
-#if 0
-    indices = (uint32_t *)alloca(sizeof(uint32_t) * NUM_VERTICES);
-
-    offset = 0;
-    for (uint32_t i = 0; i < NUM_VERTICES; i += 4) {
-        indices[i + 0] = offset + 0;
-        indices[i + 1] = offset + 1;
-        indices[i + 2] = offset + 2;
-
-        indices[i + 3] = offset + 2;
-        indices[i + 4] = offset + 3;
-        indices[i + 5] = offset + 0;
-
-        offset += 6;
-    }
-#endif
+    Printf("[Window::InitGLObjects] Allocating OpenGL buffer objects...");
 
     const char *vertShader =
     "#version 330 core\n"
+    "\n"
     "layout(location = 0) in vec3 a_Position;\n"
     "layout(location = 1) in vec2 a_TexCoords;\n"
-    "layout(location = 2) in vec4 a_Color;\n"
-    "layout(location = 3) in float a_SpecialTile;\n"
+    "layout(location = 2) in vec3 a_Color;\n"
+    "layout(location = 3) in float a_Alpha;\n"
     "\n"
     "uniform mat4 u_ViewProjection;\n"
     "\n"
     "out vec3 v_Position;\n"
     "out vec2 v_TexCoords;\n"
-    "out vec4 v_Color;\n"
-    "out float v_SpecialTile;\n"
+    "out vec3 v_Color;\n"
+    "out float v_Alpha;\n"
     "\n"
     "void main() {\n"
     "   v_Position = a_Position;\n"
     "   v_TexCoords = a_TexCoords;\n"
     "   v_Color = a_Color;\n"
-    "   v_SpecialTile = a_SpecialTile;\n"
+    "   v_Alpha = a_Alpha;\n"
     "   gl_Position = u_ViewProjection * vec4(a_Position, 1.0);\n"
     "}\n";
     const char *fragShader =
     "#version 330 core\n"
+    "\n"
     "out vec4 a_Color;\n"
     "\n"
     "in vec3 v_Position;\n"
     "in vec2 v_TexCoords;\n"
-    "in vec4 v_Color;\n"
-    "in float v_SpecialTile;\n"
+    "in vec3 v_Color;\n"
+    "in float v_Alpha;\n"
     "\n"
     "void main() {\n"
-    "   if (v_SpecialTile == 1.0) {\n"
-    "       a_Color = v_Color;\n"
-    "   }\n"
-    "   else {\n"
-    "       a_Color = vec4(1.0);\n"
-    "   }\n"
+    "   a_Color.rgb = v_Color.rgb;\n"
+    "   a_Color.a = v_Alpha;\n"
     "}\n";
-
-    Printf("[Window::InitGLObjects] Allocating OpenGL buffer objects...");
 
     glGenVertexArrays(1, &vaoId);
     glGenBuffers(1, &vboId);
+    glGenBuffers(1, &iboId);
 
     glBindVertexArray(vaoId);
     glBindBuffer(GL_ARRAY_BUFFER, vboId);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * NUM_VERTICES, NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * FRAME_VERTICES, NULL, GL_DYNAMIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * FRAME_INDICES, NULL, GL_DYNAMIC_DRAW);
 
     glEnableVertexAttribArrayARB(0);
     glVertexAttribPointerARB(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, xyz));
@@ -192,12 +183,13 @@ static void InitGLObjects(void)
     glVertexAttribPointerARB(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, uv));
 
     glEnableVertexAttribArrayARB(2);
-    glVertexAttribPointerARB(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, color));
+    glVertexAttribPointerARB(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, color));
 
     glEnableVertexAttribArrayARB(3);
-    glVertexAttribPointerARB(3, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, flags));
+    glVertexAttribPointerARB(3, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)(offsetof(Vertex, color) + (sizeof(float) * 3)));
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
     Printf("[Window::InitGLObjects] Compiling shaders...");
@@ -222,10 +214,8 @@ static void InitGLObjects(void)
     glDeleteShader(fragid);
     glUseProgram(0);
 
-    vpmId = glGetUniformLocation(shaderId, "u_ViewProjection");
-    if (vpmId == -1) {
-        Error("[Window::InitGLObjects] Failed to find uniform u_ViewProjection");
-    }
+    vpmId = GetUniform("u_ViewProjection");
+
     Printf("[Window::InitGLObjects] Finished");
     
     GL_CheckError();
@@ -287,17 +277,19 @@ Window::Window(void)
     uint32_t unusedIds = 0;
     glDebugMessageControlARB(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, (GLuint *)&unusedIds, GL_TRUE);
 
-    mVertices = (Vertex *)GetMemory(sizeof(*mVertices) * NUM_VERTICES);
-    memset(mVertices, 0, sizeof(*mVertices) * NUM_VERTICES);
+    mVertices = (Vertex *)GetClearedMemory(sizeof(*mVertices) * FRAME_VERTICES);
     InitGLObjects();
 }
 
 Window::~Window()
 {
     FreeMemory(mVertices);
+    FreeMemory(mIndices);
 
     glDeleteVertexArrays(1, &vaoId);
     glDeleteBuffers(1, &vboId);
+    glDeleteBuffers(1, &iboId);
+
     glDeleteProgram(shaderId);
 
     ImGui_ImplSDL2_Shutdown();
@@ -309,7 +301,8 @@ Window::~Window()
 
 static void ConvertCoords(Vertex *vertices, const glm::vec2& pos)
 {
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f));
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f))
+                    * glm::scale(glm::mat4(1.0f), glm::vec3(16.0f));
     glm::mat4 mvp = gui->mViewProjection * model;
 
     constexpr glm::vec4 positions[4] = {
@@ -319,7 +312,7 @@ static void ConvertCoords(Vertex *vertices, const glm::vec2& pos)
         {-0.5f,  0.5f, 0.0f, 1.0f},
     };
 
-    for (uint32_t i = 0; i < 4; i++) {
+    for (uint32_t i = 0; i < arraylen(positions); i++) {
         vertices[i].xyz = mvp * positions[i];
     }
 }
@@ -416,56 +409,68 @@ static void DrawMap(void)
     mapspawn_t *s;
     mapcheckpoint_t *c;
 
+    v = gui->mVertices;
     numVertices = 0;
     numIndices = 0;
-    v = gui->mVertices;
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glUseProgram(0);
+    glBindVertexArray(vaoId);
+    glBindBuffer(GL_ARRAY_BUFFER, vboId);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
+
     glUseProgram(shaderId);
     glUniformMatrix4fv(vpmId, 1, GL_FALSE, glm::value_ptr(gui->mViewProjection));
 
-    glBindVertexArray(vaoId);
-    glBindBuffer(GL_ARRAY_BUFFER, vboId);
     for (uint32_t y = 0; y < mapData.mHeight; y++) {
         for (uint32_t x = 0; x < mapData.mWidth; x++) {
             ConvertCoords(v, { x - (mapData.mWidth * 0.5f), mapData.mHeight - y });
 
-            if (numVertices + 6 >= NUM_VERTICES) {
+            if (numVertices + 4 >= FRAME_VERTICES) {
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
-                glDrawArrays(GL_TRIANGLE_FAN, 0, numVertices);
+                glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
+                glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, NULL);
                 v = gui->mVertices;
                 numVertices = 0;
+                numIndices = 0;
             }
-
+   
             for (uint32_t i = 0; i < 4; i++) {
-                uint32_t flags = mapData.mTiles[y * mapData.mWidth + x].flags;
-                if (flags & TILE_CHECKPOINT) {
-                    v->color[0] = 0.0f;
-                    v->color[1] = 0.0f;
-                    v->color[2] = 5.0f;
-                    v->color[3] = 1.0f;
-                    v->flags = 1.0f;
+                if (mapData.mTiles[y * mapData.mWidth + x].flags & TILE_CHECKPOINT) {
+                    v[i].color[0] = 0.0f;
+                    v[i].color[1] = 1.0f;
+                    v[i].color[2] = 0.0f;
+                    v[i].color[3] = 1.0f;
+                }
+                else if (mapData.mTiles[y * mapData.mWidth + x].flags & TILE_SPAWN) {
+                    v[i].color[0] = 1.0f;
+                    v[i].color[1] = 0.0f;
+                    v[i].color[2] = 0.0f;
+                    v[i].color[3] = 1.0f;
                 }
                 else {
-                    v->flags = 0.0f;
+                    v[i].color[0] = 1.0f;
+                    v[i].color[1] = 1.0f;
+                    v[i].color[2] = 1.0f;
+                    v[i].color[3] = 1.0f;
                 }
             }
-
             v += 4;
             numVertices += 4;
-            GL_CheckError();
+            numIndices += 6;
         }
     }
     if (numVertices || numIndices) {
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, numVertices);
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
+        glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, NULL);
     }
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
     glUseProgram(0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
     GL_CheckError();
 }
 

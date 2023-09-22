@@ -129,7 +129,7 @@ uint64_t LoadFile(const char *filename, void **buffer)
 
 	fp = SafeOpenRead(filename);
 	length = FileLength(fp);
-	buf = GetMemory(length);
+	buf = GetClearedMemory(length);
 	SafeRead(buf, length, fp);
 	fclose(fp);
 
