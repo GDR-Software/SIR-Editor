@@ -189,7 +189,6 @@ All the random shit I pulled from GtkRadiant into this project
 /*
 Editor-specific stuff
 */
-#include "widget.h"
 #include "gln_files.h"
 #include "command.h"
 #include "events.h"
