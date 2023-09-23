@@ -40,6 +40,7 @@ public:
 	static void Init(void);
 	void Draw(void);
 	void ReloadFileCache(void);
+	bool ValidateEntityId(uint32_t id) const;
 	static void AddPopup(const CPopup& popup);
 	static CWidget *PushWidget(const CWidget& widget);
 

@@ -72,6 +72,16 @@ CEditor::CEditor(void)
     mConfig = new CGameConfig;
 }
 
+bool CEditor::ValidateEntityId(uint32_t id) const
+{
+    for (const auto& it : mConfig->mMobList) {
+        if (it.mId == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /*
 RecursiveDirectoryIterator: iterates through the given and all the subdirectories
 */
