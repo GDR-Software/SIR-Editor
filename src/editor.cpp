@@ -3,28 +3,6 @@
 CEditor *editor;
 static CPopup *curPopup;
 
-static INLINE float clamp(float value, float min, float max)
-{
-    if (value > max) {
-        value = max;
-    }
-    else if (value < min) {
-        value = min;
-    }
-    return value;
-}
-
-static INLINE int32_t clamp(int32_t value, int32_t min, int32_t max)
-{
-    if (value > max) {
-        value = max;
-    }
-    else if (value < min) {
-        value = min;
-    }
-    return value;
-}
-
 static bool Draw_Directory(CFileEntry *entry);
 
 static inline bool ItemWithTooltip(const char *item_name, const char *fmt, ...)
@@ -66,10 +44,67 @@ static inline bool MenuWithTooltip(const char *item_name, const char *fmt, ...)
     return pressed;
 }
 
+static void ClearMap_f(void)
+{
+    mapData.Clear();
+}
+
+static void NewMap_f(void)
+{
+    Map_New();
+}
+
+static void Save_f(void)
+{
+    Map_Save(mapData.mName.c_str());
+}
+
+static void SaveAll_f(void)
+{
+    Map_Save(mapData.mName.c_str());
+}
+
+static void MapInfo_f(void)
+{
+    uint64_t i;
+
+    Printf("---------- Map Info ----------");
+    Printf("Name: %s", mapData.mName.c_str());
+    Printf("Width: %u", mapData.mWidth);
+    Printf("Height: %u", mapData.mHeight);
+    Printf("Number of Checkpoints: %lu", mapData.mCheckpoints.size());
+    Printf("Number of Spawns: %lu", mapData.mSpawns.size());
+
+    for (i = 0; i < mapData.mCheckpoints.size(); ++i) {
+        Printf("\n[Checkpoint %lu]", i);
+        Printf("Position: [%u, %u, %u]",
+            mapData.mCheckpoints[i].xyz[0],
+            mapData.mCheckpoints[i].xyz[1],
+            mapData.mCheckpoints[i].xyz[2]);
+    }
+
+    for (i = 0; i < mapData.mSpawns.size(); ++i) {
+        Printf("\n[Spawn %lu]", i);
+        Printf("Position: [%u, %u, %u]",
+            mapData.mSpawns[i].xyz[0],
+            mapData.mSpawns[i].xyz[1],
+            mapData.mSpawns[i].xyz[2]);
+        Printf("Entity Type: %u", mapData.mSpawns[i].entitytype);
+        Printf("Entity Id: %u", mapData.mSpawns[i].entityid);
+    }
+}
+
 CEditor::CEditor(void)
     : mConsoleActive{ false }
 {
     mConfig = new CGameConfig;
+    mode = MODE_MAP;
+
+    Cmd_AddCommand("clearMap", ClearMap_f);
+    Cmd_AddCommand("newMap", NewMap_f);
+    Cmd_AddCommand("save", Save_f);
+    Cmd_AddCommand("saveAll", SaveAll_f);
+    Cmd_AddCommand("mapinfo", MapInfo_f);
 }
 
 bool CEditor::ValidateEntityId(uint32_t id) const
@@ -235,6 +270,28 @@ void CEditor::Draw(void)
         }
         ImGui::EndMainMenuBar();
     }
+
+    if (Key_IsDown(KEY_LCTRL)) {
+        // change editor mode
+        if (Key_IsDown(KEY_M)) {
+            mode = MODE_MAP;
+        }
+        else if (Key_IsDown(KEY_E)) {
+            mode = MODE_EDIT;
+        }
+
+        // quick-commands
+        if (Key_IsDown(KEY_SLASH)) {
+            Cmd_ExecuteText("cameraCenter");
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftShift, false) && ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+            Cmd_ExecuteText("saveAll");
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_S, false)) {
+            Cmd_ExecuteText("save");
+        }
+    }
+
     Draw_Popups();
     Edit_Checkpoint();
     Edit_Spawn();
@@ -411,13 +468,15 @@ static void Edit_Spawn(void)
     }
 
     open = true;
-    if (ImGui::Begin(va("Editing Spawn %lu##EditSpawn", index), &open, ImGuiWindowFlags_NoResize)) {
-        ImGui::SetWindowSize({ 223, 103 });
+    if (ImGui::Begin("Edit Spawn", &open, ImGuiWindowFlags_NoResize)) {
+        ImGui::SetWindowSize({ 381, 168 });
         if (ImGui::InputInt("x", &x)) {
             changedX = true;
+            x = clamp(x, 0, mapData.mWidth);
         }
         if (ImGui::InputInt("y", &y)) {
             changedY = true;
+            y = clamp(y, 0, mapData.mHeight);
         }
         if (ImGui::BeginMenu("Select Entity Type")) {
             if (ImGui::MenuItem("Player")) {
@@ -444,7 +503,7 @@ static void Edit_Spawn(void)
             }
             else if (entityType == ET_MOB) {
                 for (const auto& it : editor->mConfig->mMobList) {
-                    if (ImGui::MenuItem("Name: %-64s Id: %16u", it.mName.c_str(), it.mId)) {
+                    if (ImGui::MenuItem(va("Name: %-64s Id: %16u", it.mName.c_str(), it.mId))) {
                         entityId = it.mId;
                     }
                 }
@@ -477,11 +536,11 @@ static void Edit_Spawn(void)
                 z = 0;
             }
             mapData.mTiles[s->xyz[1] * mapData.mWidth + s->xyz[0]].flags |= TILE_SPAWN;
-            MapPrefs::editingCheckpoints = false;
+            open = false;
         }
     }
     ImGui::End();
-    MapPrefs::editingCheckpoints = open;
+    MapPrefs::editingSpawns = open;
 }
 
 namespace MapCheckpoint {
@@ -515,7 +574,7 @@ static void Edit_Checkpoint(void)
     }
 
     open = true;
-    if (ImGui::Begin(va("Editing Checkpoint %lu##EditCheckpoint", index), &open, ImGuiWindowFlags_NoResize)) {
+    if (ImGui::Begin("Edit Checkpoint", &open, ImGuiWindowFlags_NoResize)) {
         ImGui::SetWindowSize({ 223, 103 });
         if (ImGui::InputInt("x", &MapCheckpoint::x)) {
             MapCheckpoint::changedX = true;
@@ -549,7 +608,7 @@ static void Edit_Checkpoint(void)
                 c->xyz[2] = MapCheckpoint::z;
                 MapCheckpoint::z = 0;
             }
-            MapPrefs::editingCheckpoints = false;
+            open = false;
 
             mapData.mTiles[c->xyz[1] * mapData.mWidth + c->xyz[0]].flags |= TILE_CHECKPOINT;
         }
@@ -570,6 +629,12 @@ static void Edit_Map(void)
     if (!MapPrefs::changedSpawns && !MapPrefs::changed) {
         MapPrefs::numSpawns = mapData.mSpawns.size();
     }
+    if (!MapPrefs::changedHeight && !MapPrefs::changed) {
+        MapPrefs::height = mapData.mHeight;
+    }
+    if (!MapPrefs::changedWidth && !MapPrefs::changed) {
+        MapPrefs::width = mapData.mWidth;
+    }
 
     if (ImGui::InputText("Name", MapPrefs::name, sizeof(MapPrefs::name))) {
         MapPrefs::changedName = true;
@@ -578,50 +643,36 @@ static void Edit_Map(void)
     if (ImGui::InputInt("Width", &MapPrefs::width)) {
         MapPrefs::changedWidth = true;
         MapPrefs::changed = true;
-        if (MapPrefs::width < 16) {
-            MapPrefs::width = 16;
-        }
-        else if (MapPrefs::width > 1024) {
-            MapPrefs::width = 1024;
-        }
+        MapPrefs::width = clamp(MapPrefs::width, 16, MAX_MAP_WIDTH);
     }
     if (ImGui::InputInt("Height", &MapPrefs::height)) {
         MapPrefs::changedHeight = true;
         MapPrefs::changed = true;
-        if (MapPrefs::height < 16) {
-            MapPrefs::height = 16;
-        }
-        else if (MapPrefs::height > 1024) {
-            MapPrefs::height = 1024;
-        }
+        MapPrefs::height = clamp(MapPrefs::height, 16, MAX_MAP_HEIGHT);
     }
     if (ImGui::InputInt("Checkpoint Count", &MapPrefs::numCheckpoints)) {
         MapPrefs::changedCheckpoints = true;
         MapPrefs::changed = true;
-        if (MapPrefs::numCheckpoints < 0) {
-            MapPrefs::numCheckpoints = 0;
-        }
-        else if (MapPrefs::numCheckpoints > 128) {
-            MapPrefs::numCheckpoints = 128;
-        }
+        MapPrefs::numCheckpoints = clamp(MapPrefs::numCheckpoints, 0, MAX_MAP_CHECKPOINTS);
+
     }
     if (ImGui::InputInt("Spawn Count", &MapPrefs::numSpawns)) {
         MapPrefs::changedSpawns = true;
         MapPrefs::changed = true;
-        if (MapPrefs::numSpawns < 1) {
-            MapPrefs::numSpawns = 1;
-        }
-        else if (MapPrefs::numSpawns > 1024) {
-            MapPrefs::numSpawns = 1024;
-        }
+        MapPrefs::numSpawns = clamp(MapPrefs::numSpawns, 1, MAX_MAP_SPAWNS);
     }
     if (ImGui::BeginMenu("Edit Checkpoint")) {
         if (!mapData.mCheckpoints.size()) {
             ImGui::MenuItem("No Checkpoints");
         }
         else {
+            char buf[1024];
             for (uint64_t i = 0; i < mapData.mCheckpoints.size(); i++) {
-                if (ImGui::MenuItem(va("Checkpoint #%lu", i))) {
+                snprintf(buf, sizeof(buf),
+                    "-------- checkpoint %lu --------\n"
+                    "coordinates: [%u, %u, %u]\n"
+                , i, mapData.mCheckpoints[i].xyz[0], mapData.mCheckpoints[i].xyz[1], mapData.mCheckpoints[i].xyz[2]);
+                if (ItemWithTooltip(va("Checkpoint #%lu", i), "%s", buf)) {
                     MapPrefs::editingCheckpointsIndex = i;
                     MapPrefs::editingCheckpoints = true;
                 }
@@ -634,8 +685,16 @@ static void Edit_Map(void)
             ImGui::MenuItem("No Spawns");
         }
         else {
+            char buf[1024];
             for (uint64_t i = 0; i < mapData.mSpawns.size(); i++) {
-                if (ImGui::MenuItem(va("Spawn #%lu", i))) {
+                snprintf(buf, sizeof(buf),
+                    "-------- spawn %lu --------\n"
+                    "coordinates: [%u, %u, %u]\n"
+                    "entity type: %u\n"
+                    "entity id: %s\n"
+                , i, mapData.mSpawns[i].xyz[0], mapData.mSpawns[i].xyz[1], mapData.mSpawns[i].xyz[2], mapData.mSpawns[i].entitytype,
+                mapData.mSpawns[i].entitytype == ET_MOB ? editor->mConfig->mMobList[mapData.mSpawns[i].entityid].mName.c_str() : "N/A");
+                if (ItemWithTooltip(va("Spawn #%lu", i), "%s", buf)) {
                     MapPrefs::editingSpawnsIndex = i;
                     MapPrefs::editingSpawns = true;
                 }
@@ -645,7 +704,9 @@ static void Edit_Map(void)
     }
 
     if (MapPrefs::changed) {
-        if (ImGui::Button("Save Map")) {
+        uint32_t i;
+
+        if (ImGui::Button("Confirm Map")) {
             if (MapPrefs::changedName) {
                 mapData.mName = MapPrefs::name;
                 memset(MapPrefs::name, 0, sizeof(MapPrefs::name));
@@ -663,19 +724,41 @@ static void Edit_Map(void)
                 mapData.mTiles.resize(mapData.mHeight * mapData.mWidth);
                 MapPrefs::changedHeight = false;
             }
+
             if (MapPrefs::changedCheckpoints) {
-                mapData.mCheckpoints.resize(MapPrefs::numCheckpoints);
-                memset(mapData.mCheckpoints.data(), 0, sizeof(mapcheckpoint_t) * mapData.mCheckpoints.size());
+                if (mapData.mCheckpoints.size() < MapPrefs::numCheckpoints) {
+                    for (i = 0; i < MapPrefs::numCheckpoints; i++) {
+                        memset(eastl::addressof(mapData.mCheckpoints.emplace_back()), 0, sizeof(mapcheckpoint_t));
+                    }
+                }
+                else if (mapData.mCheckpoints.size() > MapPrefs::numCheckpoints) {
+                    i = mapData.mCheckpoints.size();
+                    while (i != MapPrefs::numCheckpoints) {
+                        mapData.mCheckpoints.pop_back();
+                        i--;
+                    }
+                }
                 MapPrefs::changedCheckpoints = false;
                 MapPrefs::numCheckpoints = 0;
             }
             if (MapPrefs::changedSpawns) {
-                mapData.mSpawns.resize(MapPrefs::numSpawns);
-                memset(mapData.mSpawns.data(), 0, sizeof(mapspawn_t) * mapData.mSpawns.size());
+                if (mapData.mSpawns.size() < MapPrefs::numSpawns) {
+                    for (i = 0; i < MapPrefs::numSpawns; i++) {
+                        memset(eastl::addressof(mapData.mSpawns.emplace_back()), 0, sizeof(mapspawn_t));
+                    }
+                }
+                else if (mapData.mSpawns.size() > MapPrefs::numSpawns) {
+                    i = mapData.mSpawns.size();
+                    while (i != MapPrefs::numSpawns) {
+                        mapData.mSpawns.pop_back();
+                        i--;
+                    }
+                }
                 MapPrefs::changedSpawns = false;
                 MapPrefs::numSpawns = 0;
             }
             MapPrefs::changed = false;
+            mapData.mModified = true;
         }
     }
 }

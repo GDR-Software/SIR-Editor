@@ -31,6 +31,11 @@ public:
 	~CPopup() { }
 };
 
+typedef enum {
+	MODE_MAP,
+	MODE_EDIT,
+} editorMode_t;
+
 class CEditor
 {
 public:
@@ -42,10 +47,10 @@ public:
 	void ReloadFileCache(void);
 	bool ValidateEntityId(uint32_t id) const;
 	static void AddPopup(const CPopup& popup);
-	static CWidget *PushWidget(const CWidget& widget);
+
+	editorMode_t mode;
 
 	std::vector<CFileEntry> mFileCache;
-	std::vector<CWidget> mWidgets;
 	std::list<CPopup> mPopups;
 	bool mConsoleActive;
 	CGameConfig *mConfig;

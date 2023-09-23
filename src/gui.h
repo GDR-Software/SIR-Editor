@@ -30,6 +30,9 @@ public:
 
     char mInputBuf[4096];
 
+    uint32_t mWindowWidth;
+    uint32_t mWindowHeight;
+
     float mCameraZoom;
     float mCameraRotation;
     glm::vec3 mCameraPos;
@@ -40,5 +43,16 @@ public:
 };
 
 extern Window *gui;
+
+INLINE glm::vec3 ScreenToWorldSpace(int mousex, int mousey)
+{
+    double x = 2.0 * mousex / gui->mWindowWidth - 1;
+    double y = 2.0 * mousey / gui->mWindowHeight - 1;
+
+    glm::vec4 screenPos = { x, -y, -1.0f, 1.0f} ;
+    glm::vec4 worldPos = gui->mViewProjection * screenPos;
+
+    return glm::vec3(worldPos);
+}
 
 #endif

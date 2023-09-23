@@ -116,7 +116,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
             } else if (type == CHUNK_CHECKPOINT) {
                 xyz = tmpData->mCheckpoints.back().xyz;
             } else if (type == CHUNK_SPAWN) {
-                xyz = tmpData->mCheckpoints.back().xyz;
+                xyz = tmpData->mSpawns.back().xyz;
             }
 
             tok = COM_ParseExt(text, qfalse);
@@ -334,7 +334,7 @@ void Map_LoadFile(IDataStream *file, const char *ext, const char *rpath)
 
     fileLen = file->GetLength();
 
-    mapData.Clear();
+    tmpData.Clear();
     buf = (char *)GetMemory(fileLen);
     file->Read(buf, fileLen);
     file->Close();
@@ -355,6 +355,7 @@ void Map_LoadFile(IDataStream *file, const char *ext, const char *rpath)
 void Map_Load(const char *filename)
 {
     FileStream file;
+    Printf("Loading map file '%s'", filename);
 
     if (file.Open(filename, "r")) {
         Map_LoadFile(&file, GetExtension(filename), filename);
@@ -427,6 +428,8 @@ void Map_Save(const char *filename)
         snprintf(rpath, sizeof(rpath), "%s%s.map", editor->mConfig->mEditorPath.c_str(), filename);
     }
 
+    Printf("Saving map file '%s'", filename);
+
     if (!file.Open(rpath, "w")) {
         Error("Map_Save: failed to open file '%s' in write mode", rpath);
     }
@@ -442,7 +445,6 @@ void Map_Save(const char *filename)
             "numCheckpoints %lu\n"
             "numLights %lu\n"
             "numEntities %lu\n"
-            "}\n"
         , mapData.mName.c_str(), mapData.mWidth, mapData.mHeight, mapData.mSpawns.size(), mapData.mCheckpoints.size(),
         mapData.mLights.size(), mapData.mEntities.size());
         file.Write(buf, strlen(buf));
@@ -450,23 +452,135 @@ void Map_Save(const char *filename)
 
     SaveSpawns(&file);
     SaveCheckpoints(&file);
+
+    file.Write("}\n", 2);
+
+    mapData.mModified = false;
 }
 
 CMapData::CMapData(void)
 {
     mWidth = 16;
     mHeight = 16;
+    mModified = true;
 
     mTiles.resize(MAX_MAP_TILES);
     mCheckpoints.reserve(MAX_MAP_CHECKPOINTS);
     mSpawns.reserve(MAX_MAP_SPAWNS);
-    mLights.reserve(MAX_MAP_LIGHTS);
 
     memset(mTiles.data(), 0, sizeof(*mTiles.data()) * MAX_MAP_TILES);
 }
 
 CMapData::~CMapData()
 {
+}
+
+
+static void SetTileCheckpoints(void)
+{
+    const uint32_t width = mapData.mWidth;
+    const uint32_t height = mapData.mHeight;
+    const std::vector<mapcheckpoint_t>& checkpoints = mapData.mCheckpoints;
+    std::vector<maptile_t>& tiles = mapData.mTiles;
+
+    for (uint32_t y = 0; y < height; y++) {
+        for (uint32_t x = 0; x < width; x++) {
+            for (const auto& it : checkpoints) {
+                if (it.xyz[0] == x && it.xyz[1] == y) {
+                    boost::lock_guard<boost::shared_mutex> lock{mapData.resourceLock};
+                    tiles[y * width + x].flags |= TILE_CHECKPOINT;
+                }
+            }
+        }
+    }
+}
+
+static void SetTileSpawns(void)
+{
+    const uint32_t width = mapData.mWidth;
+    const uint32_t height = mapData.mHeight;
+    const std::vector<mapspawn_t>& spawns = mapData.mSpawns;
+    std::vector<maptile_t>& tiles = mapData.mTiles;
+
+    for (uint32_t y = 0; y < height; y++) {
+        for (uint32_t x = 0; x < width; x++) {
+            for (const auto& it : spawns) {
+                if (it.xyz[0] == x && it.xyz[1] == y) {
+                    boost::lock_guard<boost::shared_mutex> lock{mapData.resourceLock};
+                    tiles[y * width + x].flags |= TILE_SPAWN;
+                }
+            }
+        }
+    }
+}
+
+static const CMapData *tmpOther;
+
+template<typename T>
+static void CopyVector(std::vector<T>& dst, const std::vector<T>& src)
+{
+    dst.resize(src.size());
+    memcpy(dst.data(), src.data(), sizeof(T) * src.size());
+}
+
+static void CopyTiles(void)
+{ CopyVector(mapData.mTiles, tmpOther->mTiles); }
+static void CopySpawns(void)
+{ CopyVector(mapData.mSpawns, tmpOther->mSpawns); }
+static void CopyLights(void)
+{ CopyVector(mapData.mLights, tmpOther->mLights); }
+static void CopyCheckpoints(void)
+{ CopyVector(mapData.mCheckpoints, tmpOther->mCheckpoints); }
+static void CopyEntities(void)
+{ CopyVector(mapData.mEntities, tmpOther->mEntities); }
+static void CopyVertices(void)
+{ CopyVector(mapData.mVertices, tmpOther->mVertices); }
+static void CopyIndices(void)
+{ CopyVector(mapData.mIndices, tmpOther->mIndices); }
+
+const CMapData& CMapData::operator=(const CMapData& other)
+{
+    tmpOther = eastl::addressof(other);
+    Clear();
+    
+    mWidth = other.mWidth;
+    mHeight = other.mHeight;
+    mName = other.mName;
+
+    {
+        boost::thread_group group;
+
+        group.create_thread(CopyTiles);
+        group.create_thread(CopySpawns);
+        group.create_thread(CopyLights);
+        group.create_thread(CopyCheckpoints);
+        group.create_thread(CopyEntities);
+        group.create_thread(CopyVertices);
+        group.create_thread(CopyIndices);
+
+        group.join_all();
+    }
+
+    {
+        boost::thread_group group;
+
+        group.create_thread(SetTileCheckpoints);
+        group.create_thread(SetTileSpawns);
+
+        group.join_all();
+    }
+
+    mModified = true;
+    
+    return *this;
+}
+
+void CMapData::SetMapSize(uint32_t width, uint32_t height)
+{
+    mWidth = width;
+    mHeight = height;
+    mTiles.resize(mWidth * mHeight);
+    mModified = true;
 }
 
 void CMapData::Clear(void)
@@ -482,4 +596,34 @@ void CMapData::Clear(void)
     mTiles.clear();
     mPath.clear();
     mName.clear();
+    mModified = true;
+}
+
+/*
+CheckAutoSave: if mAutoSaveTime (in minutes) have passed since last edit, and the map hasn't been saved yet, save it
+*/
+void CheckAutoSave(void)
+{
+    static time_t s_start;
+    time_t now;
+    time(&now);
+
+    if (mapData.mModified || !s_start) {
+        s_start = now;
+        return;
+    }
+
+    if ((now - s_start) > (60 * editor->mConfig->mAutoSaveTime)) {
+        if (editor->mConfig->mAutoSave) {
+            const char *strMsg;
+
+            strMsg = "Autosaving map...";
+            Printf("%s", strMsg);
+            Map_Save(mapData.mName.c_str());
+        }
+        else {
+            Printf("Autosave skipped...");
+        }
+        s_start = now;
+    }
 }

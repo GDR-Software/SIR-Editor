@@ -40,10 +40,12 @@ void CPrefs::LoadPrefs(const std::string& path)
     mPrefList.emplace_back("enginePath", data["config"]["enginePath"].get<std::string>().c_str(), "config");
     mPrefList.emplace_back("exePath", data["config"]["exePath"].get<std::string>().c_str(), "config");
     mPrefList.emplace_back("editorPath", data["config"]["editorPath"].get<std::string>().c_str(), "config");
+    mPrefList.emplace_back("autoSaveTime", data["config"]["autoSaveTime"].get<std::string>().c_str(), "config");
+    mPrefList.emplace_back("autoSave", data["config"]["autoSave"].get<std::string>().c_str(), "config");
 
     mPrefList.reserve(data["graphics"].size());
-    mPrefList.emplace_back("textureDetail", data["graphics"]["textureDetail"].get<std::string>().c_str(), "config");
-    mPrefList.emplace_back("textureFiltering", data["graphics"]["textureFiltering"].get<std::string>().c_str(), "config");
+    mPrefList.emplace_back("textureDetail", data["graphics"]["textureDetail"].get<std::string>().c_str(), "graphics");
+    mPrefList.emplace_back("textureFiltering", data["graphics"]["textureFiltering"].get<std::string>().c_str(), "graphics");
 
     mPrefList.reserve(data["camera"].size());
     mPrefList.emplace_back("moveSpeed", data["camera"]["moveSpeed"].get<std::string>().c_str(), "camera");
@@ -53,12 +55,15 @@ void CPrefs::LoadPrefs(const std::string& path)
 
 void CPrefs::SetDefault(void)
 {
-    mPrefList.reserve(8);
-
+    mPrefList.emplace_back("editorPath", "Data/", "config");
     mPrefList.emplace_back("enginePath", "", "config");
     mPrefList.emplace_back("exePath", "", "config");
-    mPrefList.emplace_back("textureDetail", "2", "config");
-    mPrefList.emplace_back("textureFiltering", "Bilinear", "config");
+    mPrefList.emplace_back("autoSaveTime", "5", "config");
+    mPrefList.emplace_back("autoSave", "true", "config");
+
+    mPrefList.emplace_back("textureDetail", "2", "graphics");
+    mPrefList.emplace_back("textureFiltering", "Bilinear", "graphics");
+    
     mPrefList.emplace_back("moveSpeed", "1.5f", "camera");
     mPrefList.emplace_back("rotationSpeed", "1.0f", "camera");
     mPrefList.emplace_back("zoomSpeed", "1.5f", "camera");
@@ -73,8 +78,11 @@ void CPrefs::SavePrefs(void) const
 
     // general configuration
     {
+        data["config"]["editorPath"] = FindPref("editorPath");
         data["config"]["enginePath"] = FindPref("enginePath");
         data["config"]["exePath"] = FindPref("exePath");
+        data["config"]["autoSaveTime"] = FindPref("autoSaveTime");
+        data["config"]["autoSave"] = FindPref("autoSave");
     }
     // graphics configuration
     {
@@ -132,6 +140,9 @@ CGameConfig::CGameConfig(void)
     if (mEnginePath.back() != PATH_SEP) {
         mEnginePath.push_back(PATH_SEP);
     }
+
+    mAutoSaveTime = atoi(mPrefs["autoSaveTime"].c_str());
+    mAutoSave = mPrefs["autoSave"] == "true" ? true : false;
 
     mTextureDetail = StringToInt(mPrefs["textureDetail"], texture_details, arraylen(texture_details));
     mTextureFiltering = StringToInt(mPrefs["textureFiltering"], texture_filters, arraylen(texture_filters));

@@ -192,6 +192,13 @@ void KeyEvent(uint32_t key, bool down)
 		KeyUpEvent(key);
 }
 
+typedef struct {
+	int x, y;
+	glm::ivec2 lastPos;
+	glm::vec2 offset, delta;
+} mouse_t;
+mouse_t mouseState;
+
 void CEventQueue::PumpKeyEvents(void)
 {
 	SDL_Event event;
@@ -211,19 +218,38 @@ void CEventQueue::PumpKeyEvents(void)
 			QueueEvent(SE_WINDOW, event.type, 0, 0, NULL);
 			break;
 		case SDL_MOUSEMOTION:
+			mouseState.x = event.motion.x;
+			mouseState.y = event.motion.y;
+
+			mouseState.offset.x = mouseState.x - mouseState.lastPos.x;
+			mouseState.offset.y = mouseState.y - mouseState.lastPos.y;
+
+			mouseState.lastPos.x = mouseState.x;
+			mouseState.lastPos.y = mouseState.y;
+
+			mouseState.delta.x = ((float)mouseState.offset.x) / gui->mWindowWidth * 2;
+			mouseState.delta.y = ((float)mouseState.offset.y) / gui->mWindowHeight * 2;
+			mouseState.delta = glm::normalize(mouseState.delta);
+
+			if (Key_IsDown(KEY_MOUSE_LEFT) && editor->mode != MODE_EDIT) {
+				gui->mCameraPos.x -= (mouseState.delta.x / 4);
+				gui->mCameraPos.y += (mouseState.delta.y / 4);
+			}
             QueueEvent(SE_MOUSE, event.motion.x, event.motion.y, 0, NULL);
             break;
 		case SDL_MOUSEBUTTONUP:
+			SDL_GetMouseState(&mouseState.lastPos.x, &mouseState.lastPos.y);
             QueueEvent(SE_KEY, event.button.button, 0, 0, NULL);
             break;
 		case SDL_MOUSEBUTTONDOWN:
+			SDL_GetMouseState(&mouseState.lastPos.x, &mouseState.lastPos.y);
             QueueEvent(SE_KEY, event.button.button, 1, 0, NULL);
             break;
 		case SDL_MOUSEWHEEL:
-            if (event.wheel.y > 0) // wheel up
-				(void)0;
-            if (event.wheel.y < 0) // wheel down
-				(void)0;
+            if (event.wheel.y > 0 && editor->mode != MODE_EDIT) // wheel up
+				gui->mCameraZoom -= editor->mConfig->mCameraZoomSpeed;
+            if (event.wheel.y < 0 && editor->mode != MODE_EDIT) // wheel down
+				gui->mCameraZoom += editor->mConfig->mCameraZoomSpeed;
 			break;
 		};
 	}

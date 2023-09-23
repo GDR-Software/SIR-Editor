@@ -70,10 +70,13 @@ public:
 
     int mTextureDetail;
     int mTextureFiltering;
+    int mAutoSaveTime;
 
     float mCameraMoveSpeed;
     float mCameraRotationSpeed;
     float mCameraZoomSpeed;
+
+    bool mAutoSave;
 
     CPrefs mPrefs;
 };

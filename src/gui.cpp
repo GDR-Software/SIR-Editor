@@ -15,12 +15,7 @@
 #define WINDOW_HEIGHT 1080
 
 Window *gui;
-static vector_t<char> conBuffer;
-
-static void Clear_f(void)
-{
-    conBuffer.clear();
-}
+static std::vector<char> conBuffer;
 
 static void GL_CheckError(void)
 {
@@ -221,6 +216,16 @@ static void InitGLObjects(void)
     GL_CheckError();
 }
 
+static void Clear_f(void)
+{
+    conBuffer.clear();
+}
+
+static void CameraCenter_f(void)
+{
+    gui->mCameraPos = glm::vec3(0.0f);
+}
+
 Window::Window(void)
 {
     if (SDL_Init(SDL_INIT_EVENTS | SDL_INIT_VIDEO) < 0) {
@@ -229,6 +234,8 @@ Window::Window(void)
 
     Printf("[Window::Init] Setting up GUI");
 
+    mWindowWidth = WINDOW_WIDTH;
+    mWindowHeight = WINDOW_HEIGHT;
     mWindow = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT,
         SDL_WINDOW_OPENGL | SDL_WINDOW_MOUSE_CAPTURE);
     if (!mWindow) {
@@ -268,17 +275,20 @@ Window::Window(void)
     mCameraPos = glm::vec3(0.0f);
     mCameraRotation = 0.0f;
     mCameraZoom = 1.5f;
+//    mCameraOffset = glm::vec3( -mWindowWidth / 2 * mCameraZoom, -mWindowHeight / 2 * mCameraZoom, 0.0f );
     mProjection = glm::ortho(-3.0f, 3.0f, -3.0f, 3.0f, -1.0f, 1.0f);
     MakeViewMatrix(this);
 
     glEnable(GL_DEBUG_OUTPUT);
-    glEnable(GL_DEBUG_CALLBACK_FUNCTION);
     glDebugMessageCallback(GL_ErrorCallback, NULL);
     uint32_t unusedIds = 0;
     glDebugMessageControlARB(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, (GLuint *)&unusedIds, GL_TRUE);
 
     mVertices = (Vertex *)GetClearedMemory(sizeof(*mVertices) * FRAME_VERTICES);
     InitGLObjects();
+
+    Cmd_AddCommand("clear", Clear_f);
+    Cmd_AddCommand("cameraCenter", CameraCenter_f);
 }
 
 Window::~Window()
@@ -369,37 +379,14 @@ static void PollEvents(void)
     events.EventLoop();
 
     // camera movement
-    if (Key_IsDown(KEY_N))
-        Camera_ZoomIn();
-    if (Key_IsDown(KEY_M))
-        Camera_ZoomOut();
-    if (Key_IsDown(KEY_W))
+    if (Key_IsDown(KEY_UP))
         Camera_MoveUp();
-    if (Key_IsDown(KEY_S))
+    if (Key_IsDown(KEY_DOWN))
         Camera_MoveDown();
-    if (Key_IsDown(KEY_D))
+    if (Key_IsDown(KEY_RIGHT))
         Camera_MoveRight();
-    if (Key_IsDown(KEY_A))
+    if (Key_IsDown(KEY_LEFT))
         Camera_MoveLeft();
-#if 0 // works, but no very good
-    if (Key_IsDown(KEY_MOUSE_LEFT) && mouse.moving) {
-        camera.pos.x += cos(mouse.angle) * (camera.moveSpeed / 2);
-        camera.pos.y += sin(mouse.angle) * (camera.moveSpeed / 2);
-
-        mouse.moving = false;
-    }
-#endif
-
-    // ctrl
-//    if (Key_IsDown(KEY_LCTRL) || Key_IsDown(KEY_RCTRL))
-//        editor->setModeBits(EDITOR_CTRL);
-//    else
-//        editor->clearModeBits(EDITOR_CTRL);
-//    
-//    if (Key_IsDown(KEY_N) && editor->getModeBits() & EDITOR_CTRL)
-//        Editor::GetProjManager()->GetCurrent()->New();
-//    if (Key_IsDown(KEY_S) && editor->getModeBits() & EDITOR_CTRL)
-//        Editor::GetProjManager()->GetCurrent()->Save();
 }
 
 static void DrawMap(void)
@@ -525,16 +512,17 @@ void Window::EndFrame(void)
         const ImVec2 windowSize = ImGui::GetWindowSize();
         const ImVec2 windowPos = ImGui::GetWindowPos();
 
-        ImGui::Begin("Command Console");
-        conBuffer.emplace_back('\0');
-        ImGui::Text("%s", conBuffer.data());
-        conBuffer.pop_back();
-        ImGui::Text("> ");
-        ImGui::SameLine();
+        if (ImGui::Begin("Command Console", &editor->mConsoleActive)) {
+            conBuffer.emplace_back('\0');
+            ImGui::Text("%s", conBuffer.data());
+            conBuffer.pop_back();
+            ImGui::Text("> ");
+            ImGui::SameLine();
 
-        memset(mInputBuf, 0, sizeof(mInputBuf));
-        if (ImGui::InputText(" ", mInputBuf, sizeof(mInputBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
-            PollCommands(mInputBuf);
+            memset(mInputBuf, 0, sizeof(mInputBuf));
+            if (ImGui::InputText(" ", mInputBuf, sizeof(mInputBuf), ImGuiInputTextFlags_EnterReturnsTrue)) {
+                PollCommands(mInputBuf);
+            }
         }
         ImGui::End();
 

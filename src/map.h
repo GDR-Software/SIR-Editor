@@ -24,32 +24,17 @@ public:
     std::string mPath;
     std::string mName;
 
+    bool mModified;
+
     CMapData(void);
     ~CMapData();
 
     void Clear(void);
+    void SetMapSize(uint32_t width, uint32_t height);
 
-    const CMapData& operator=(const CMapData& other)
-    {
-        Clear();
-        mTiles.resize(other.mTiles.size());
-        mLights.resize(other.mLights.size());
-        mIndices.resize(other.mIndices.size());
-        mVertices.resize(other.mVertices.size());
-        mSpawns.resize(other.mSpawns.size());
-        mCheckpoints.resize(other.mCheckpoints.size());
-        mEntities.resize(other.mEntities.size());
+    boost::shared_mutex resourceLock;
 
-        memcpy(mTiles.data(), other.mTiles.data(), sizeof(maptile_t) * other.mTiles.size());
-        memcpy(mLights.data(), other.mLights.data(), sizeof(maplight_t) * other.mLights.size());
-        memcpy(mIndices.data(), other.mIndices.data(), sizeof(uint32_t) * other.mIndices.size());
-        memcpy(mVertices.data(), other.mVertices.data(), sizeof(mapvert_t) * other.mVertices.size());
-        memcpy(mSpawns.data(), other.mSpawns.data(), sizeof(mapspawn_t) * other.mSpawns.size());
-        memcpy(mCheckpoints.data(), other.mCheckpoints.data(), sizeof(mapcheckpoint_t) * other.mCheckpoints.size());
-        memcpy(mEntities.data(), other.mEntities.data(), sizeof(CEntity) * other.mEntities.size());
-
-        return *this;
-    }
+    const CMapData& operator=(const CMapData& other);
 };
 
 extern CMapData mapData;
@@ -58,5 +43,6 @@ extern char mapname[1024];
 void Map_New(void);
 void Map_Load(const char *filename);
 void Map_Save(const char *filename);
+void CheckAutoSave(void);
 
 #endif
