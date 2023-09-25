@@ -576,12 +576,68 @@ const CMapData& CMapData::operator=(const CMapData& other)
     return *this;
 }
 
+/*
+map vertices and indices aren't saved to the text based .map format
+*/
+void CMapData::CalcDrawData(void)
+{
+    mVertices.resize(mWidth * mHeight * 4);
+    mIndices.resize(mWidth * mHeight * 6);
+
+    auto calculateIndices = [&](std::vector<uint32_t>& indices) {
+        uint32_t i, offset;
+
+        offset = 0;
+        for (i = 0; i < indices.size(); i += 6) {
+            indices[i + 0] = offset + 0;
+            indices[i + 1] = offset + 1;
+            indices[i + 2] = offset + 2;
+
+            indices[i + 3] = offset + 3;
+            indices[i + 4] = offset + 2;
+            indices[i + 5] = offset + 0;
+
+            offset += 4;
+        }
+    };
+
+    auto calculateVertices = [&](std::vector<mapvert_t>& vertices, uint32_t width, uint32_t height) {
+        auto convertCoords = [&](const glm::vec2& pos, mapvert_t *verts) {
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3( pos.x, pos.y, 0.0f ));
+            glm::mat4 mvp = gui->mViewProjection * model;
+
+            constexpr glm::vec4 positions[4] = {
+                { 0.5f,  0.5f, 0.0f, 1.0f},
+                { 0.5f, -0.5f, 0.0f, 1.0f},
+                {-0.5f, -0.5f, 0.0f, 1.0f},
+                {-0.5f,  0.5f, 0.0f, 1.0f},
+            };
+
+            for (uint32_t i = 0; i < arraylen(positions); i++) {
+                const glm::vec3 p = mvp * positions[i];
+            }
+        };
+        for (uint32_t y = 0; y < height; y++) {
+            for (uint32_t x = 0; x < width; x++) {
+                convertCoords({ x, y }, &vertices[y * width + x]);
+            }
+        }
+    };
+
+    boost::thread indices(calculateIndices, mIndices);
+    boost::thread vertices(calculateVertices, mVertices, mWidth, mHeight);
+
+    indices.join();
+    vertices.join();
+}
+
 void CMapData::SetMapSize(uint32_t width, uint32_t height)
 {
     mWidth = width;
     mHeight = height;
     mTiles.resize(mWidth * mHeight);
     mModified = true;
+    CalcDrawData();
 }
 
 void CMapData::Clear(void)
@@ -601,6 +657,12 @@ void CMapData::Clear(void)
 
     mCheckpoints.reserve(MAX_MAP_CHECKPOINTS);
     mSpawns.reserve(MAX_MAP_SPAWNS);
+
+    for (auto& it : mTiles) {
+        it.index = -1;
+    }
+
+    CalcDrawData();
     
     // always at least one spawn for the player
     const mapspawn_t s = {
@@ -614,9 +676,9 @@ void CMapData::Clear(void)
 /*
 CheckAutoSave: if mAutoSaveTime (in minutes) have passed since last edit, and the map hasn't been saved yet, save it
 */
+static time_t s_start = 0;
 void CheckAutoSave(void)
 {
-    static time_t s_start;
     time_t now;
     time(&now);
 

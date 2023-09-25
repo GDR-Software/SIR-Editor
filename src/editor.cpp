@@ -154,6 +154,7 @@ CFileEntry *Draw_FileList(std::vector<CFileEntry>& fileList)
 void CEditor::AddPopup(const CPopup& popup)
 { editor->mPopups.emplace_back(popup); }
 
+
 void CEditor::Draw(void)
 {
     if (Key_IsDown(KEY_LCTRL)) {

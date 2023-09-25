@@ -231,7 +231,7 @@ void CEventQueue::PumpKeyEvents(void)
 			mouseState.delta.y = ((float)mouseState.offset.y) / gui->mWindowHeight * 2;
 			mouseState.delta = glm::normalize(mouseState.delta);
 
-			if (Key_IsDown(KEY_MOUSE_LEFT) && editor->mode != MODE_EDIT) {
+			if (Key_IsDown(KEY_MOUSE_LEFT) && editor->mode == MODE_MAP) {
 				gui->mCameraPos.x -= (mouseState.delta.x / 4);
 				gui->mCameraPos.y += (mouseState.delta.y / 4);
 			}
@@ -246,9 +246,9 @@ void CEventQueue::PumpKeyEvents(void)
             QueueEvent(SE_KEY, event.button.button, 1, 0, NULL);
             break;
 		case SDL_MOUSEWHEEL:
-            if (event.wheel.y > 0 && editor->mode != MODE_EDIT) // wheel up
+            if (event.wheel.y > 0 && editor->mode == MODE_MAP) // wheel up
 				gui->mCameraZoom -= gameConfig->mCameraZoomSpeed;
-            if (event.wheel.y < 0 && editor->mode != MODE_EDIT) // wheel down
+            if (event.wheel.y < 0 && editor->mode == MODE_MAP) // wheel down
 				gui->mCameraZoom += gameConfig->mCameraZoomSpeed;
 			break;
 		};

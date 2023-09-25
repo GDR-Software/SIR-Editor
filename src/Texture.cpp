@@ -17,7 +17,8 @@ void CTexture::Load(const std::string& path)
     stbi_uc *image;
     GLint min, mag;
     
-    image = stbi_load(path.c_str(), (int *)&mWidth, (int *)&mHeight, (int *)&mChannels, 3);
+//    stbi_set_flip_vertically_on_load(true);
+    image = stbi_load(path.c_str(), (int *)&mWidth, (int *)&mHeight, (int *)&mChannels, 0);
     if (!image) {
         Printf("[CTexture::Load] failed to load texture file '%s', stbimage error message: %s", path.c_str(), stbi_failure_reason());
         return;
@@ -54,7 +55,7 @@ void CTexture::Load(const std::string& path)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, mWidth, mHeight, 0, mChannels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, image);
+    glTexImage2D(GL_TEXTURE_2D, 0, mChannels == 4 ? GL_RGBA8 : GL_RGB8, mWidth, mHeight, 0, mChannels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, image);
     Unbind();
 
     Printf("[CTexture::Load] done");

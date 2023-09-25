@@ -77,6 +77,8 @@ static INLINE void UPDATE_VAR(std::vector<T>& dst, int& amount, bool& cond)
     }
 }
 
+static INLINE void GET_VAR(bool& change, const char *title, bool& value)
+{ if ((value = ImGui::Button(title))) { change = true; } }
 static INLINE void GET_VAR(bool& change, const char *title, int& value)
 { if (ImGui::InputInt(title, eastl::addressof(value))) { change = true; } }
 static INLINE void GET_VAR(bool& change, const char *title, float& value)
@@ -84,6 +86,8 @@ static INLINE void GET_VAR(bool& change, const char *title, float& value)
 static INLINE void GET_VAR(bool& change, const char *title, char *value, int size)
 { if (ImGui::InputText(title, value, size)) { change = true; } }
 
+static INLINE void GET_VAR(bool& change, bool& changed, const char *title, bool& value)
+{ if ((value = ImGui::Button(title))) { change = true; changed = true; } }
 static INLINE void GET_VAR(bool& change, bool& changed, const char *title, int& value)
 { if (ImGui::InputInt(title, eastl::addressof(value))) { change = true; changed = true; } }
 static INLINE void GET_VAR(bool& change, bool& changed, const char *title, float& value)
@@ -91,6 +95,23 @@ static INLINE void GET_VAR(bool& change, bool& changed, const char *title, float
 static INLINE void GET_VAR(bool& change, bool& changed, const char *title, char *value, int size)
 { if (ImGui::InputText(title, value, size)) { change = true; changed = true; } }
 
+template<typename T>
+static INLINE void GET_VAR_MENU(bool& change, bool& changed, T& value, const T& set, bool enabled, const char *title)
+{
+    if (ImGui::MenuItem(title, (const char *)NULL, (bool *)NULL, enabled)) {
+        value = set;
+        change = true;
+        changed = true;
+    }
+}
+template<typename T, typename U>
+static INLINE void GET_VAR_MENU(bool& change, T& value, const U& set, bool enabled, const char *title)
+{
+    if (ImGui::MenuItem(title, (const char *)NULL, (bool *)NULL, enabled)) {
+        value = set;
+        change = true;
+    }
+}
 template<typename T>
 static INLINE void GET_VAR_MENU(bool& change, bool& changed, T& value, const T& set, const char *title)
 {
@@ -125,6 +146,32 @@ static INLINE void GET_VAR_MENU(bool& change, T& value, const U& set, const char
         change = true;
     }
 }
+
+typedef struct {
+    int x;
+    int y;
+    int elevation;
+    float brightness;
+    vec3_t color;
+    bool xChanged;
+    bool yChanged;
+    bool brightnessChanged;
+    bool colorChanged;
+} lightGlobals_t;
+
+typedef struct {
+    int color[4];
+    int x;
+    int y;
+    int tileIndex;
+    unsigned flags;
+    bool flagsChanged;
+    bool isCheckpoint;
+    bool isSpawn;
+    bool isCheckpointChanged;
+    bool isSpawnChanged;
+    bool open;
+} tileGlobals_t;
 
 typedef struct {
     int textureDetails;
@@ -192,6 +239,10 @@ typedef struct {
 } mapGlobals_t;
 
 typedef struct {
+    bool tilesetOpen;
+} viewGlobals_t;
+
+typedef struct {
     char texturePath[MAX_OSPATH*2+1];
     int tileWidth;
     int tileHeight;
@@ -210,6 +261,9 @@ typedef struct widgetsGlobals_s {
     spawnGlobals_t spawn;
     checkpointGlobals_t checkpoint;
     tilesetGlobals_t tileset;
+    lightGlobals_t light;
+    tileGlobals_t tile;
+    viewGlobals_t view;
     bool preferencesChanged;
     
     widgetsGlobals_s(void)
@@ -233,14 +287,14 @@ static INLINE void Update_Config(void)
     UPDATE_VAR(gameConfig->mEnginePath, g->enginePath, g->enginePathChanged);
     UPDATE_VAR(gameConfig->mExecutablePath, g->exePath, g->exePathChanged);
 }
-static void Update_Graphics(void)
+static INLINE void Update_Graphics(void)
 {
     graphicsGlobals_t *g = &globals->graphics;
 
     UPDATE_VAR(gameConfig->mTextureDetail, g->textureDetails, g->textureDetailsChanged);
     UPDATE_VAR(gameConfig->mTextureFiltering, g->textureFilters, g->textureFiltersChanged);
 }
-static void Update_Map(void)
+static INLINE void Update_Map(void)
 {
     mapGlobals_t *g = &globals->map;
 
@@ -254,14 +308,16 @@ static void Update_Map(void)
     UPDATE_VAR(mapData->mSpawns, g->numSpawns, g->spawnsChanged);
 }
 
-static void Update_Tileset(void)
+static INLINE void Update_Tileset(void)
 {
     tilesetGlobals_t *g = &globals->tileset;
     std::shared_ptr<CTileset>& tileset = project->tileset;
 
-    UPDATE_VAR(tileset->tiles, g->numTiles, g->numTilesChanged);
     UPDATE_VAR(tileset->tileHeight, g->tileHeight, g->tileHeightChanged);
     UPDATE_VAR(tileset->tileWidth, g->tileWidth, g->tileWidthChanged);
+
+    if (tileset->tileWidth == 0 || tileset->tileHeight == 0)
+        return;
 
     tileset->GenerateTiles();
 }
@@ -380,6 +436,125 @@ static void Edit_Preferences(void)
     }
 }
 
+
+typedef struct {
+    int curX, curY;
+    bool active;
+} tileMode_t;
+extern tileMode_t tileMode;
+
+static void TileMode(void)
+{
+    tileGlobals_t *g = &globals->tile;
+
+    if (editor->mode != MODE_TILE) {
+        g->flags = 0;
+        return;
+    }
+    if (Key_IsDown(KEY_ENTER)) {
+        g->open = true;
+    }
+
+    CHECK_VAR(g->tileIndex, mapData->mTiles[tileMode.curY * mapData->mWidth + tileMode.curX].index, true);
+    CHECK_VAR(g->x, tileMode.curX, true);
+    CHECK_VAR(g->y, tileMode.curY, true);
+    CHECK_VAR(g->isCheckpoint, mapData->mTiles[tileMode.curY * mapData->mWidth + tileMode.curX].flags & TILE_CHECKPOINT, !g->isCheckpointChanged);
+    CHECK_VAR(g->isSpawn, mapData->mTiles[tileMode.curY * mapData->mWidth + tileMode.curX].flags & TILE_SPAWN, !g->isSpawnChanged);
+    
+    if (ImGui::Begin("Tile Info", &g->open, 0)) {
+        ImGui::Text("Tile X: %i", g->x);
+        ImGui::Text("Tile Y: %i", g->y);
+
+        //
+        // Tile Flags
+        //
+        ImGui::SeparatorText(va("Flags [0x%x]", g->flags));
+        if (g->isSpawn) {
+            ImGui::PushStyleColor(ImGuiCol_Button, { 0.5, 0.5, 0.5, 1 });
+        }
+        if (ImGui::Button(va("Checkpoint (0x%x)", (uint32_t)TILE_CHECKPOINT))) {
+            if (!g->isSpawn) {
+                g->isCheckpointChanged = true;
+                g->isCheckpoint = true;
+                g->flags |= TILE_CHECKPOINT;
+                g->flagsChanged = true;
+            }
+        }
+        if (g->isSpawn) {
+            ImGui::PopStyleColor();
+        }
+
+        if (g->isCheckpoint) {
+            ImGui::PushStyleColor(ImGuiCol_Button, { 0.5, 0.5, 0.5, 1 });
+        }
+        if (ImGui::Button(va("Spawn (0x%x)", (uint32_t)TILE_SPAWN))) {
+            if (!g->isCheckpoint) {
+                g->isSpawnChanged = true;
+                g->isSpawn = true;
+                g->flags |= TILE_SPAWN;
+                g->flagsChanged = true;
+            }
+        }
+        if (g->isCheckpoint) {
+            ImGui::PopStyleColor();
+        }
+        if (!g->flagsChanged) {
+            ImGui::PushStyleColor(ImGuiCol_Button, { 0.5, 0.5, 0.5, 1 });
+        }
+        if (ImGui::Button("Clear Flags")) {
+            if (g->flagsChanged) {
+                g->isCheckpoint = false;
+                g->isSpawn = false;
+                g->flags = 0;
+            }
+        }
+        if (!g->flagsChanged) {
+            ImGui::PopStyleColor();
+        }
+
+        //
+        // Texture
+        //
+        ImGui::SeparatorText("Texture");
+        ImGui::Text("Tile Index: %i", g->tileIndex);
+        if (!project->tileset->tiles.size()) {
+            ImGui::Text("No Tileset Generated");
+        }
+        else {
+            if (g->tileIndex != -1) {
+                const maptile_t *tile = &project->tileset->tiles[g->tileIndex];
+                ImGui::Image((ImTextureID)(uint64_t)project->tileset->texData->mId, ImVec2( 48, 48 ), { tile->texcoords[0][0], tile->texcoords[0][1] },
+                    { tile->texcoords[2][0], tile->texcoords[2][1] });
+            }
+            if (g->tileIndex != -1 && ImGui::Button("Clear Texture")) {
+                g->tileIndex = -1;
+            }
+        }
+
+        //
+        // Tile Color
+        //
+        ImGui::SeparatorText("Color");
+        ImGui::SliderInt("R", &g->color[0], 0, 255);
+        ImGui::SliderInt("G", &g->color[1], 0, 255);
+        ImGui::SliderInt("B", &g->color[2], 0, 255);
+        g->color[3] = 1;
+
+        if (ImGui::Button("Done")) {
+            UPDATE_VAR(mapData->mTiles[tileMode.curY * mapData->mWidth + tileMode.curX].flags,
+                mapData->mTiles[tileMode.curY * mapData->mWidth + tileMode.curX].flags | TILE_CHECKPOINT, g->isCheckpointChanged);
+            UPDATE_VAR(mapData->mTiles[tileMode.curY * mapData->mWidth + tileMode.curX].flags,
+                mapData->mTiles[tileMode.curY * mapData->mWidth + tileMode.curX].flags | TILE_SPAWN, g->isSpawnChanged);
+            
+            const glm::vec4 color = NormalToRGBA({ g->color[0], g->color[1], g->color[2], 1 });
+            memcpy(mapData->mVertices[tileMode.curY * mapData->mWidth + tileMode.curX].color, &color[0], sizeof(vec4_t));
+
+            g->open = false;
+        }
+    }
+    ImGui::End();
+}
+
 static const char *EntityTypeString(int type)
 {
     switch (type) {
@@ -445,7 +620,7 @@ static void Edit_Spawn(void)
             }
             ImGui::EndMenu();
         }
-        ImGui::Text("Current Entity Id: %s", g->entityid != -1 ? va("%i", g->entityid) : "Invalid");
+        ImGui::Text("Current Entity Id: %s", g->entityid != 0 ? gameConfig->mMobList[g->entityid].mName.c_str() : "N/A");
 
         if (ImGui::Button("Save Spawn")) {
             int old_x = s->xyz[0];
@@ -521,10 +696,18 @@ static void Edit_Tileset(void)
     CHECK_VAR(g->tileHeight, tileset->tileHeight, !g->tileHeightChanged && !g->changed);
     CHECK_VAR(g->tileWidth, tileset->tileWidth, !g->tileWidthChanged && !g->changed);
 
-    if (ItemWithTooltip(va("Texture Path: %s", tileset->texData->mName.size() ? tileset->texData->mName.c_str() : "None"),
+    if (ButtonWithTooltip(va("Texture Path: %s", tileset->texData->mName.size() ? tileset->texData->mName.c_str() : "None"),
     "Change the texture path of the current tileset")) {
         ImGuiFileDialog::Instance()->OpenDialog("SelectTexturePathDlg", "Select File", ".png, .bmp, .jpeg, .tga, .pcx, .*", gameConfig->mEditorPath);
+        g->changed = true;
     }
+
+    ImGui::Text("Texture Width: %i", tileset->texData->mWidth);
+    ImGui::Text("Texture Height: %i", tileset->texData->mHeight);
+    ImGui::Text("Tile Count: %lu", tileset->tiles.size());
+
+    GET_VAR(g->tileWidthChanged, g->changed, "Tile Width", g->tileWidth);
+    GET_VAR(g->tileHeightChanged, g->changed, "Tile Height", g->tileHeight);
 
     if (g->changed) {
         if (ImGui::Button("Confirm Tileset")) {
@@ -609,6 +792,50 @@ static void Edit_Map(void)
     }
 }
 
+static void View_Tileset(void)
+{
+    viewGlobals_t *g = &globals->view;
+    const std::shared_ptr<CTileset>& tileset = project->tileset;
+    const std::shared_ptr<CTexture>& texture = tileset->texData;
+    ImVec2 textureSize = { tileset->tileWidth, tileset->tileHeight };
+    const maptile_t *tile;
+
+    if (!g->tilesetOpen) {
+        return;
+    }
+
+    textureSize = clamp(textureSize, ImVec2( 64, 64 ), ImVec2( 128, 128 ));
+
+    if (ImGui::Begin("Tileset", &g->tilesetOpen, 0)) {
+        for (uint32_t y = 0; y < tileset->tileCountY; y++) {
+            for (uint32_t x = 0; x < tileset->tileCountX; x++) {
+                tile = &tileset->tiles[y * tileset->tileCountX + x];
+
+                ImVec2 min = { tile->texcoords[0][0], tile->texcoords[0][1] };
+                ImVec2 max = { tile->texcoords[2][0], tile->texcoords[2][1] };
+
+                ImGui::PushID(1);
+                if (ImGui::ImageButton((ImTextureID)(uint64_t)texture->mId, textureSize, min, max) || ImGui::IsItemClicked()) {
+                    maptile_t *t = &mapData->mTiles[tileMode.curY * mapData->mWidth + tileMode.curX];
+                    memcpy(t->texcoords, tile->texcoords, sizeof(t->texcoords));
+                    t->index = y * tileset->tileCountX + x;
+                }
+                ImGui::PopID();
+                ImGui::SameLine();
+            }
+            ImGui::NewLine();
+        }
+    }
+    ImGui::End();
+}
+
+static void View_Menu(void)
+{
+    if (ImGui::MenuItem("Tileset")) {
+        globals->view.tilesetOpen = true;
+    }
+}
+
 void Widgets_Draw(void)
 {
     if (ImGui::BeginMainMenuBar()) {
@@ -621,6 +848,7 @@ void Widgets_Draw(void)
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
+            View_Menu();
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Build")) {
@@ -632,6 +860,8 @@ void Widgets_Draw(void)
 
     Edit_Checkpoint();
     Edit_Spawn();
+    View_Tileset();
+    TileMode();
 
     configGlobals_t *g = &globals->config;
     if (ImGuiFileDialog::Instance()->IsOpened("SelectTexturePathDlg")) {

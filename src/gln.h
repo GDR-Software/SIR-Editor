@@ -142,7 +142,7 @@ INLINE const char *GetAbsolutePath(const char *path)
 char* BuildOSPath(const char *curPath, const char *gamepath, const char *npath);
 
 template<typename A, typename B, typename C>
-INLINE A clamp(A value, B min, C max)
+INLINE A clamp(const A& value, const B& min, const C& max)
 {
     if (value > max) {
         return max;
@@ -151,15 +151,6 @@ INLINE A clamp(A value, B min, C max)
     }
     return value;
 }
-
-#if 0
-INLINE int32_t clamp(int32_t value, int32_t min, int32_t max)
-{ return value > max ? max : value < min ? min : value; }
-INLINE float clamp(float value, float min, float max)
-{ return value > max ? max : value < min ? min : value; }
-INLINE uint32_t clamp(uint32_t value, uint32_t min, uint32_t max)
-{ return value > max ? max : value < min ? min : value; }
-#endif
 
 typedef struct {
     int i;

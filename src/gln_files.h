@@ -127,16 +127,17 @@ typedef struct {
 } maplight_t;
 
 typedef struct {
-    uint32_t index;
+    int32_t index;
     uint32_t flags;
     uvec3_t pos;
+    vec4_t color;
     float texcoords[4][2];
 } maptile_t;
 
 typedef struct {
     vec3_t xyz;
     vec2_t uv;
-    byte color[4];
+    vec4_t color[4];
 } mapvert_t;
 
 typedef struct {

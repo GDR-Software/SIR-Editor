@@ -7,8 +7,6 @@
 #define STB_SPRINTF_IMPLEMENTATION
 #include <stb/stb_sprintf.h>
 #include "gui.h"
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 #define WINDOW_TITLE "GLNomad Level Editor"
 #define WINDOW_WIDTH 1920
@@ -139,6 +137,50 @@ static void InitUBO(void)
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
+static uint32_t numEnabledAttribs;
+
+static void SetMapVertPointers(void)
+{
+    for (uint32_t i = 0; i < numEnabledAttribs; i++) {
+        glDisableVertexAttribArray(i);
+    }
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(mapvert_t), (const void *)offsetof(mapvert_t, xyz));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(mapvert_t), (const void *)offsetof(mapvert_t, uv));
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(mapvert_t), (const void *)offsetof(mapvert_t, color));
+
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(mapvert_t), (const void *)(offsetof(mapvert_t, color) + (sizeof(vec_t) * 3)));
+
+    numEnabledAttribs = 4;
+}
+
+static void SetVertexPointers(void)
+{
+    for (uint32_t i = 0; i < numEnabledAttribs; i++) {
+        glDisableVertexAttribArray(i);
+    }
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, xyz));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, uv));
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, color));
+
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)(offsetof(Vertex, color) + (sizeof(float) * 3)));
+
+    numEnabledAttribs = 4;
+}
+
 static void InitGLObjects(void)
 {
     GLuint vertid, fragid;
@@ -200,11 +242,22 @@ static void InitGLObjects(void)
     "   color.a += u_AmbientLight;\n"
     "   return color;\n"
     "}\n"
+    "vec4 toGreyscale(in vec4 color) {\n"
+    "   float avg = (color.r + color.g + color.b) / 3.0;\n"
+    "   return vec4(avg, avg, avg, 1.0);\n"
+    "}\n"
+    "vec4 colorize(in vec4 greyscale, in vec4 color) {\n"
+    "   return (greyscale * color);\n"
+    "}\n"
     "\n"
     "void main() {\n"
     "   a_Color.rgb = v_Color.rgb;\n"
     "   a_Color.a = v_Alpha;\n"
     "   if (a_Color.rgb == vec3(1.0) && v_Alpha == 1.0) {\n"
+    "   }\n"
+    "   if (v_Alpha != 1.0) {\n"
+    "      vec4 greyscale = toGreyscale(a_Color);\n"
+    "      a_Color = colorize(greyscale, vec4(0.0, 0.0, 0.5, 1.0));\n"
     "   }\n"
     "}\n";
 
@@ -219,17 +272,8 @@ static void InitGLObjects(void)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * FRAME_INDICES, NULL, GL_DYNAMIC_DRAW);
 
-    glEnableVertexAttribArrayARB(0);
-    glVertexAttribPointerARB(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, xyz));
-
-    glEnableVertexAttribArrayARB(1);
-    glVertexAttribPointerARB(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, uv));
-
-    glEnableVertexAttribArrayARB(2);
-    glVertexAttribPointerARB(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, color));
-
-    glEnableVertexAttribArrayARB(3);
-    glVertexAttribPointerARB(3, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)(offsetof(Vertex, color) + (sizeof(float) * 3)));
+    numEnabledAttribs = 0;
+    SetVertexPointers();
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -283,7 +327,7 @@ typedef struct {
     int curX, curY;
     bool active;
 } tileMode_t;
-static tileMode_t tileMode;
+tileMode_t tileMode;
 
 static void TileModeInfo_f(void)
 {
@@ -540,9 +584,7 @@ static void DrawMap(void)
                 }
 
                 if (editor->mode == MODE_TILE && tileMode.curX == x && tileMode.curY == y) {
-                    v[i].color[0] = 0.0f;
-                    v[i].color[1] = 0.0f;
-                    v[i].color[2] = 1.0f;
+                    v[i].color[3] = 0.0f;
                 }
             }
             v += 4;
@@ -638,3 +680,53 @@ void Window::EndFrame(void)
 
     SDL_GL_SwapWindow(mWindow);
 }
+
+class VertexCache
+{
+public:
+    GLuint vaoId, vboId, iboId;
+
+    VertexCache(uint64_t numVertices, uint64_t numIndices) { InitBase(numVertices, numIndices); }
+
+    void InitBase(uint64_t numVertices, uint64_t numIndices);
+};
+
+void VertexCache::InitBase(uint64_t numVertices, uint64_t numIndices)
+{
+    glGenVertexArrays(1, &vaoId);
+    glGenBuffers(1, &vboId);
+    glGenBuffers(1, &iboId);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboId);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * FRAME_VERTICES, NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * FRAME_INDICES, NULL, GL_DYNAMIC_DRAW);
+
+    numEnabledAttribs = 0;
+    SetVertexPointers();
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+
+struct BindCache
+{
+    INLINE BindCache(const VertexCache *cache)
+    { Bind(cache); }
+    INLINE ~BindCache()
+    { Unbind(); }
+
+    INLINE void Bind(const VertexCache *cache) const
+    {
+        glBindVertexArray(cache->vaoId);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cache->iboId);
+        glBindBuffer(GL_ARRAY_BUFFER, cache->vboId);
+    }
+    INLINE void Unbind(void) const
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+    }
+};

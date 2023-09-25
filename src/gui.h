@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 struct Vertex
 {
     glm::vec3 xyz;
@@ -44,6 +47,28 @@ public:
 };
 
 extern std::unique_ptr<Window> gui;
+
+INLINE glm::ivec4 RGBAToNormal(const glm::vec4& color)
+{
+    return glm::ivec4((
+        ((uint32_t)(color.a)<<IM_COL32_A_SHIFT) |
+        ((uint32_t)(color.b)<<IM_COL32_B_SHIFT) |
+        ((uint32_t)(color.g)<<IM_COL32_G_SHIFT) |
+        ((uint32_t)(color.a)<<IM_COL32_R_SHIFT))
+    );
+}
+
+INLINE glm::vec4 NormalToRGBA(const glm::ivec4& color)
+{
+    const uint32_t rgba =
+        color[0] | (color[1] << 8) | (color[2] << 16) | (color[3] << 24);
+    return glm::vec4(
+        (float)((rgba >> IM_COL32_R_SHIFT) & 0xFF) * (1.0f / 255.0f),
+        (float)((rgba >> IM_COL32_G_SHIFT) & 0xFF) * (1.0f / 255.0f),
+        (float)((rgba >> IM_COL32_B_SHIFT) & 0xFF) * (1.0f / 255.0f),
+        (float)((rgba >> IM_COL32_A_SHIFT) & 0xFF) * (1.0f / 255.0f)
+    );
+}
 
 INLINE glm::vec3 ScreenToWorldSpace(int mousex, int mousey)
 {
