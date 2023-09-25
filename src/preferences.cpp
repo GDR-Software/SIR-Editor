@@ -4,6 +4,8 @@
 #define GLNOMAD_ENGINE "GLNE"
 #define GLNOMAD_EXE "glnomad" STR(EXE_EXT)
 
+std::unique_ptr<CGameConfig> gameConfig;
+
 CPrefs::CPrefs(void)
 {
 }
@@ -15,7 +17,7 @@ CPrefs::~CPrefs()
 
 static void PrintPrefs_f(void)
 {
-    const std::vector<CPrefData>& prefList = editor->mConfig->mPrefs.mPrefList;
+    const std::vector<CPrefData>& prefList = gameConfig->mPrefs.mPrefList;
     for (std::vector<CPrefData>::const_iterator it = prefList.cbegin(); it != prefList.cend(); ++it) {
         Printf(
             "[%s] =>\n"
@@ -108,7 +110,7 @@ void CGameConfig::LoadMobList(void)
     json data;
     std::filesystem::path path;
 
-    path = editor->mConfig->mEditorPath + "moblist.json";
+    path = gameConfig->mEditorPath + "moblist.json";
 
     Printf("[CGameConfig::LoadMobList] loading mob list...");
 
@@ -161,5 +163,4 @@ CGameConfig::CGameConfig(void)
 
 CGameConfig::~CGameConfig()
 {
-    mPrefs.SavePrefs();
 }

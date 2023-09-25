@@ -130,7 +130,7 @@ typedef struct {
     uint32_t index;
     uint32_t flags;
     uvec3_t pos;
-    float **texcoords;
+    float texcoords[4][2];
 } maptile_t;
 
 typedef struct {

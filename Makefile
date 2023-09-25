@@ -24,7 +24,10 @@ OBJS=\
 	$(O)/preferences.o \
 	$(O)/map.o \
 	$(O)/parse.o \
+	$(O)/project.o \
+	$(O)/widget.o \
 	$(O)/Texture.o \
+	$(O)/tileset.o \
 	$(O)/ImGuiFileDialog.o \
 
 $(O)/%.o: src/%.cpp

@@ -21,6 +21,7 @@ public:
 
     void EndFrame(void);
     void BeginFrame(void);
+    void InitTileMode(void);
 
     SDL_Window *mWindow;
     SDL_GLContext mContext;
@@ -42,7 +43,7 @@ public:
     glm::mat4 mViewMatrix;
 };
 
-extern Window *gui;
+extern std::unique_ptr<Window> gui;
 
 INLINE glm::vec3 ScreenToWorldSpace(int mousex, int mousey)
 {

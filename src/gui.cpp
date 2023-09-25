@@ -14,7 +14,7 @@
 #define WINDOW_WIDTH 1920
 #define WINDOW_HEIGHT 1080
 
-Window *gui;
+std::unique_ptr<Window> gui;
 static std::vector<char> conBuffer;
 
 static void GL_CheckError(void)
@@ -36,16 +36,16 @@ static void ImGui_MemFree(void *ptr, void *)
     FreeMemory(ptr);
 }
 
-static GLuint vaoId, vboId, iboId, shaderId;
-static GLint vpmId, checkpointId;
+static GLuint vaoId, vboId, iboId, uboId, shaderId;
+static GLint vpmId, lightsId;
 
-static void MakeViewMatrix(Window *context = gui)
+static void MakeViewMatrix(void)
 {
-    glm::mat4 transpose = glm::translate(glm::mat4(1.0f), context->mCameraPos)
-                        * glm::scale(glm::mat4(1.0f), glm::vec3(context->mCameraZoom))
-                        * glm::rotate(glm::mat4(1.0f), glm::radians(context->mCameraRotation), glm::vec3(0, 0, 1));
-    context->mViewMatrix = glm::inverse(transpose);
-    context->mViewProjection = context->mProjection * context->mViewMatrix;
+    glm::mat4 transpose = glm::translate(glm::mat4(1.0f), gui->mCameraPos)
+                        * glm::scale(glm::mat4(1.0f), glm::vec3(gui->mCameraZoom))
+                        * glm::rotate(glm::mat4(1.0f), glm::radians(gui->mCameraRotation), glm::vec3(0, 0, 1));
+    gui->mViewMatrix = glm::inverse(transpose);
+    gui->mViewProjection = gui->mProjection * gui->mViewMatrix;
 }
 
 static void CheckProgram(void)
@@ -113,9 +113,31 @@ static void GL_ErrorCallback(GLenum source,GLenum type,GLuint id,GLenum severity
     };
 }
 
+struct Light {
+    float birightness;
+    vec3_t origin;
+    vec3_t color;
+};
+
 #define FRAME_QUADS 0x8000
 #define FRAME_VERTICES (FRAME_QUADS*4)
 #define FRAME_INDICES (FRAME_QUADS*6)
+
+GLuint blockIndex;
+static Light lights[MAX_MAP_LIGHTS];
+
+static void InitUBO(void)
+{
+    blockIndex = glGetUniformBlockIndex(shaderId, "u_Lights");
+    glUniformBlockBinding(shaderId, blockIndex, 0);
+
+    glGenBuffers(1, &uboId);
+    glBindBuffer(GL_UNIFORM_BUFFER, uboId);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(Light) * MAX_MAP_LIGHTS, NULL, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboId);
+    glBindBufferRange(GL_UNIFORM_BUFFER, 0, uboId, 0, sizeof(Light) * MAX_MAP_LIGHTS);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
 
 static void InitGLObjects(void)
 {
@@ -147,17 +169,43 @@ static void InitGLObjects(void)
     "}\n";
     const char *fragShader =
     "#version 330 core\n"
+    "#define MAX_MAP_LIGHTS 1024"
     "\n"
     "out vec4 a_Color;\n"
+    "\n"
+    "struct Light {\n"
+    "   float brightness;\n"
+    "   vec3 origin;\n"
+    "   vec3 color;\n"
+    "};\n"
+    "\n"
+    "uniform int u_numLights;\n"
+    "uniform sampler2D u_SpriteSheet;\n"
+    "uniform float u_AmbientLight;\n"
+    "layout(std140) uniform u_Lights {\n"
+    "   Light lights[MAX_MAP_LIGHTS];\n"
+    "};\n"
     "\n"
     "in vec3 v_Position;\n"
     "in vec2 v_TexCoords;\n"
     "in vec3 v_Color;\n"
     "in float v_Alpha;\n"
     "\n"
+    "vec4 applyLights() {\n"
+    "   vec4 color;\n"
+    "   for (int i = 0; i < u_numLights; i++) {\n"
+    "       color.rgb = color.rgb * 1.0 / distance(lights[i].origin, v_Position);\n"
+    "       color.rgb += lights[i].brightness;"
+    "   }\n"
+    "   color.a += u_AmbientLight;\n"
+    "   return color;\n"
+    "}\n"
+    "\n"
     "void main() {\n"
     "   a_Color.rgb = v_Color.rgb;\n"
     "   a_Color.a = v_Alpha;\n"
+    "   if (a_Color.rgb == vec3(1.0) && v_Alpha == 1.0) {\n"
+    "   }\n"
     "}\n";
 
     glGenVertexArrays(1, &vaoId);
@@ -203,6 +251,8 @@ static void InitGLObjects(void)
 
     CheckProgram();
 
+    InitUBO();
+
     Printf("[Window::InitGLObjects] Cleaning up shaders...");
 
     glDeleteShader(vertid);
@@ -210,6 +260,9 @@ static void InitGLObjects(void)
     glUseProgram(0);
 
     vpmId = GetUniform("u_ViewProjection");
+    lightsId = glGetUniformBlockIndex(shaderId, "u_Lights");
+    glUniformBlockBinding(shaderId, lightsId, 0);
+
 
     Printf("[Window::InitGLObjects] Finished");
     
@@ -224,6 +277,18 @@ static void Clear_f(void)
 static void CameraCenter_f(void)
 {
     gui->mCameraPos = glm::vec3(0.0f);
+}
+
+typedef struct {
+    int curX, curY;
+    bool active;
+} tileMode_t;
+static tileMode_t tileMode;
+
+static void TileModeInfo_f(void)
+{
+    Printf("Tile Current X: %i", tileMode.curX);
+    Printf("Tile Current Y: %i", tileMode.curY);
 }
 
 Window::Window(void)
@@ -277,7 +342,6 @@ Window::Window(void)
     mCameraZoom = 1.5f;
 //    mCameraOffset = glm::vec3( -mWindowWidth / 2 * mCameraZoom, -mWindowHeight / 2 * mCameraZoom, 0.0f );
     mProjection = glm::ortho(-3.0f, 3.0f, -3.0f, 3.0f, -1.0f, 1.0f);
-    MakeViewMatrix(this);
 
     glEnable(GL_DEBUG_OUTPUT);
     glDebugMessageCallback(GL_ErrorCallback, NULL);
@@ -289,6 +353,7 @@ Window::Window(void)
 
     Cmd_AddCommand("clear", Clear_f);
     Cmd_AddCommand("cameraCenter", CameraCenter_f);
+    Cmd_AddCommand("tilemodeInfo", TileModeInfo_f);
 }
 
 Window::~Window()
@@ -311,8 +376,7 @@ Window::~Window()
 
 static void ConvertCoords(Vertex *vertices, const glm::vec2& pos)
 {
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f))
-                    * glm::scale(glm::mat4(1.0f), glm::vec3(16.0f));
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f));
     glm::mat4 mvp = gui->mViewProjection * model;
 
     constexpr glm::vec4 positions[4] = {
@@ -329,48 +393,54 @@ static void ConvertCoords(Vertex *vertices, const glm::vec2& pos)
 
 void Camera_ZoomIn(void)
 {
-    gui->mCameraZoom -= editor->mConfig->mCameraZoomSpeed;
+    gui->mCameraZoom -= gameConfig->mCameraZoomSpeed;
     if (gui->mCameraZoom < 0.5f)
         gui->mCameraZoom = 0.5f;
 }
 
 void Camera_ZoomOut(void)
 {
-    gui->mCameraZoom += editor->mConfig->mCameraZoomSpeed;
+    gui->mCameraZoom += gameConfig->mCameraZoomSpeed;
 }
 
 void Camera_RotateLeft(void)
 {
-    gui->mCameraRotation -= editor->mConfig->mCameraRotationSpeed;
+    gui->mCameraRotation -= gameConfig->mCameraRotationSpeed;
 }
 
 void Camera_RotateRight(void)
 {
-    gui->mCameraRotation += editor->mConfig->mCameraRotationSpeed;
+    gui->mCameraRotation += gameConfig->mCameraRotationSpeed;
 }
 
 void Camera_MoveUp(void)
 {
-    gui->mCameraPos.x += -sin(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
-    gui->mCameraPos.y += cos(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
+    gui->mCameraPos.x += -sin(glm::radians(gui->mCameraRotation)) * gameConfig->mCameraMoveSpeed;
+    gui->mCameraPos.y += cos(glm::radians(gui->mCameraRotation)) * gameConfig->mCameraMoveSpeed;
 }
 
 void Camera_MoveDown(void)
 {
-    gui->mCameraPos.x -= -sin(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
-    gui->mCameraPos.y -= cos(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
+    gui->mCameraPos.x -= -sin(glm::radians(gui->mCameraRotation)) * gameConfig->mCameraMoveSpeed;
+    gui->mCameraPos.y -= cos(glm::radians(gui->mCameraRotation)) * gameConfig->mCameraMoveSpeed;
 }
 
 static void Camera_MoveLeft(void)
 {
-    gui->mCameraPos.x -= cos(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
-    gui->mCameraPos.y -= sin(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
+    gui->mCameraPos.x -= cos(glm::radians(gui->mCameraRotation)) * gameConfig->mCameraMoveSpeed;
+    gui->mCameraPos.y -= sin(glm::radians(gui->mCameraRotation)) * gameConfig->mCameraMoveSpeed;
 }
 
 static void Camera_MoveRight(void)
 {
-    gui->mCameraPos.x += cos(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
-    gui->mCameraPos.y += sin(glm::radians(gui->mCameraRotation)) * editor->mConfig->mCameraMoveSpeed;
+    gui->mCameraPos.x += cos(glm::radians(gui->mCameraRotation)) * gameConfig->mCameraMoveSpeed;
+    gui->mCameraPos.y += sin(glm::radians(gui->mCameraRotation)) * gameConfig->mCameraMoveSpeed;
+}
+
+void Window::InitTileMode(void)
+{
+    memset(&tileMode, 0, sizeof(tileMode));
+    tileMode.active = true;
 }
 
 static void PollEvents(void)
@@ -379,14 +449,35 @@ static void PollEvents(void)
     events.EventLoop();
 
     // camera movement
-    if (Key_IsDown(KEY_UP))
-        Camera_MoveUp();
-    if (Key_IsDown(KEY_DOWN))
-        Camera_MoveDown();
-    if (Key_IsDown(KEY_RIGHT))
-        Camera_MoveRight();
-    if (Key_IsDown(KEY_LEFT))
-        Camera_MoveLeft();
+    if (editor->mode != MODE_TILE) {
+        if (Key_IsDown(KEY_UP))
+            Camera_MoveUp();
+        if (Key_IsDown(KEY_DOWN))
+            Camera_MoveDown();
+        if (Key_IsDown(KEY_RIGHT))
+            Camera_MoveRight();
+        if (Key_IsDown(KEY_LEFT))
+            Camera_MoveLeft();
+    }
+    else {
+        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, false))
+            tileMode.curY--;
+        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, false))
+            tileMode.curY++;
+        if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, false))
+            tileMode.curX++;
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, false))
+            tileMode.curX--;
+        
+        if (tileMode.curX < 0)
+            tileMode.curX = mapData->mWidth - 1;
+        else if (tileMode.curX >= mapData->mWidth)
+            tileMode.curX = 0;
+        if (tileMode.curY < 0)
+            tileMode.curY = mapData->mHeight - 1;
+        else if (tileMode.curY >= mapData->mHeight)
+            tileMode.curY = 0;
+    }
 }
 
 static void DrawMap(void)
@@ -395,6 +486,7 @@ static void DrawMap(void)
     Vertex *v;
     mapspawn_t *s;
     mapcheckpoint_t *c;
+    const ImVec2 mousePos = ImGui::GetMousePos();
 
     v = gui->mVertices;
     numVertices = 0;
@@ -410,9 +502,13 @@ static void DrawMap(void)
     glUseProgram(shaderId);
     glUniformMatrix4fv(vpmId, 1, GL_FALSE, glm::value_ptr(gui->mViewProjection));
 
-    for (uint32_t y = 0; y < mapData.mHeight; y++) {
-        for (uint32_t x = 0; x < mapData.mWidth; x++) {
-            ConvertCoords(v, { x - (mapData.mWidth * 0.5f), mapData.mHeight - y });
+    glBindBuffer(GL_UNIFORM_BUFFER, uboId);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Light) * MAX_MAP_LIGHTS, lights);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    for (uint32_t y = 0; y < mapData->mHeight; y++) {
+        for (uint32_t x = 0; x < mapData->mWidth; x++) {
+            ConvertCoords(v, { x - (mapData->mWidth * 0.5f), mapData->mHeight - y });
 
             if (numVertices + 4 >= FRAME_VERTICES) {
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
@@ -424,23 +520,29 @@ static void DrawMap(void)
             }
    
             for (uint32_t i = 0; i < 4; i++) {
-                if (mapData.mTiles[y * mapData.mWidth + x].flags & TILE_CHECKPOINT) {
+                if (mapData->mTiles[y * mapData->mWidth + x].flags & TILE_CHECKPOINT) {
                     v[i].color[0] = 0.0f;
                     v[i].color[1] = 1.0f;
                     v[i].color[2] = 0.0f;
                     v[i].color[3] = 1.0f;
                 }
-                else if (mapData.mTiles[y * mapData.mWidth + x].flags & TILE_SPAWN) {
+                else if (mapData->mTiles[y * mapData->mWidth + x].flags & TILE_SPAWN) {
                     v[i].color[0] = 1.0f;
                     v[i].color[1] = 0.0f;
                     v[i].color[2] = 0.0f;
-                    v[i].color[3] = 1.0f;
+                    v[i].color[3] = 0.5f;
                 }
                 else {
                     v[i].color[0] = 1.0f;
                     v[i].color[1] = 1.0f;
                     v[i].color[2] = 1.0f;
                     v[i].color[3] = 1.0f;
+                }
+
+                if (editor->mode == MODE_TILE && tileMode.curX == x && tileMode.curY == y) {
+                    v[i].color[0] = 0.0f;
+                    v[i].color[1] = 0.0f;
+                    v[i].color[2] = 1.0f;
                 }
             }
             v += 4;
@@ -467,7 +569,7 @@ void Window::BeginFrame(void)
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
 
-    MakeViewMatrix(this);
+    MakeViewMatrix();
 
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize.x = WINDOW_WIDTH;

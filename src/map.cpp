@@ -10,14 +10,15 @@ typedef struct {
 } mapinfo_t;
 
 char mapname[1024];
-CMapData mapData;
+std::unique_ptr<CMapData> mapData;
 static char curmapfile[1024];
+static bool first = false;
 
 void Map_New(void)
 {
-    mapData.Clear();
-    mapData.mPath = pwdString.string() + "/Data/untitled-map.map";
-    mapData.mName = "untitled-map";
+    mapData->Clear();
+    mapData->mPath = pwdString.string() + "/Data/untitled-map.map";
+    mapData->mName = "untitled-map";
 }
 
 typedef enum {
@@ -124,14 +125,14 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 COM_ParseError("missing parameter for pos.x");
                 return false;
             }
-            xyz[0] = static_cast<uint32_t>(atoi(tok));
+            xyz[0] = static_cast<uint32_t>(clamp(atoi(tok), 0, tmpData->mWidth));
 
             tok = COM_ParseExt(text, qfalse);
             if (!tok[0]) {
                 COM_ParseError("missing parameter for pos.y");
                 return false;
             }
-            xyz[1] = static_cast<uint32_t>(atoi(tok));
+            xyz[1] = static_cast<uint32_t>(clamp(atoi(tok), 0, tmpData->mHeight));
             
             tok = COM_ParseExt(text, qfalse);
             if (!tok[0]) {
@@ -346,8 +347,8 @@ void Map_LoadFile(IDataStream *file, const char *ext, const char *rpath)
         Printf("Error: failed to load map");
     }
     else {
-        mapData = tmpData;
-        mapData.mPath = rpath;
+        *mapData = tmpData;
+        mapData->mPath = rpath;
     }
     FreeMemory(buf);
 }
@@ -369,7 +370,7 @@ static void SaveSpawns(IDataStream *file)
 {
     char buf[1024];
 
-    for (const auto& it : mapData.mSpawns) {
+    for (const auto& it : mapData->mSpawns) {
         snprintf(buf, sizeof(buf),
             "{\n"
             "classname map_spawn\n"
@@ -386,7 +387,7 @@ static void SaveCheckpoints(IDataStream *file)
 {
     char buf[1024];
 
-    for (const auto& it : mapData.mCheckpoints) {
+    for (const auto& it : mapData->mCheckpoints) {
         snprintf(buf, sizeof(buf),
             "{\n"
             "classname map_checkpoint\n"
@@ -401,7 +402,7 @@ static void SaveLights(IDataStream *file)
 {
     char buf[1024];
 
-    for (const auto& it : mapData.mLights) {
+    for (const auto& it : mapData->mLights) {
         snprintf(buf, sizeof(buf),
             "{\n"
             "classname map_light\n"
@@ -423,9 +424,9 @@ void Map_Save(const char *filename)
     char rpath[MAX_OSPATH*2+1];
     FileStream file;
 
-    snprintf(rpath, sizeof(rpath), "%s%s", editor->mConfig->mEditorPath.c_str(), filename);
+    snprintf(rpath, sizeof(rpath), "%s%s", gameConfig->mEditorPath.c_str(), filename);
     if (!GetExtension(filename) || N_stricmp(GetExtension(filename), "map")) {
-        snprintf(rpath, sizeof(rpath), "%s%s.map", editor->mConfig->mEditorPath.c_str(), filename);
+        snprintf(rpath, sizeof(rpath), "%s%s.map", gameConfig->mEditorPath.c_str(), filename);
     }
 
     Printf("Saving map file '%s'", filename);
@@ -445,8 +446,8 @@ void Map_Save(const char *filename)
             "numCheckpoints %lu\n"
             "numLights %lu\n"
             "numEntities %lu\n"
-        , mapData.mName.c_str(), mapData.mWidth, mapData.mHeight, mapData.mSpawns.size(), mapData.mCheckpoints.size(),
-        mapData.mLights.size(), mapData.mEntities.size());
+        , mapData->mName.c_str(), mapData->mWidth, mapData->mHeight, mapData->mSpawns.size(), mapData->mCheckpoints.size(),
+        mapData->mLights.size(), mapData->mEntities.size());
         file.Write(buf, strlen(buf));
     }
 
@@ -455,7 +456,7 @@ void Map_Save(const char *filename)
 
     file.Write("}\n", 2);
 
-    mapData.mModified = false;
+    mapData->mModified = false;
 }
 
 CMapData::CMapData(void)
@@ -478,16 +479,16 @@ CMapData::~CMapData()
 
 static void SetTileCheckpoints(void)
 {
-    const uint32_t width = mapData.mWidth;
-    const uint32_t height = mapData.mHeight;
-    const std::vector<mapcheckpoint_t>& checkpoints = mapData.mCheckpoints;
-    std::vector<maptile_t>& tiles = mapData.mTiles;
+    const uint32_t width = mapData->mWidth;
+    const uint32_t height = mapData->mHeight;
+    const std::vector<mapcheckpoint_t>& checkpoints = mapData->mCheckpoints;
+    std::vector<maptile_t>& tiles = mapData->mTiles;
 
     for (uint32_t y = 0; y < height; y++) {
         for (uint32_t x = 0; x < width; x++) {
             for (const auto& it : checkpoints) {
                 if (it.xyz[0] == x && it.xyz[1] == y) {
-                    boost::lock_guard<boost::shared_mutex> lock{mapData.resourceLock};
+                    boost::lock_guard<boost::shared_mutex> lock{mapData->resourceLock};
                     tiles[y * width + x].flags |= TILE_CHECKPOINT;
                 }
             }
@@ -497,16 +498,16 @@ static void SetTileCheckpoints(void)
 
 static void SetTileSpawns(void)
 {
-    const uint32_t width = mapData.mWidth;
-    const uint32_t height = mapData.mHeight;
-    const std::vector<mapspawn_t>& spawns = mapData.mSpawns;
-    std::vector<maptile_t>& tiles = mapData.mTiles;
+    const uint32_t width = mapData->mWidth;
+    const uint32_t height = mapData->mHeight;
+    const std::vector<mapspawn_t>& spawns = mapData->mSpawns;
+    std::vector<maptile_t>& tiles = mapData->mTiles;
 
     for (uint32_t y = 0; y < height; y++) {
         for (uint32_t x = 0; x < width; x++) {
             for (const auto& it : spawns) {
                 if (it.xyz[0] == x && it.xyz[1] == y) {
-                    boost::lock_guard<boost::shared_mutex> lock{mapData.resourceLock};
+                    boost::lock_guard<boost::shared_mutex> lock{mapData->resourceLock};
                     tiles[y * width + x].flags |= TILE_SPAWN;
                 }
             }
@@ -524,19 +525,19 @@ static void CopyVector(std::vector<T>& dst, const std::vector<T>& src)
 }
 
 static void CopyTiles(void)
-{ CopyVector(mapData.mTiles, tmpOther->mTiles); }
+{ CopyVector(mapData->mTiles, tmpOther->mTiles); }
 static void CopySpawns(void)
-{ CopyVector(mapData.mSpawns, tmpOther->mSpawns); }
+{ CopyVector(mapData->mSpawns, tmpOther->mSpawns); }
 static void CopyLights(void)
-{ CopyVector(mapData.mLights, tmpOther->mLights); }
+{ CopyVector(mapData->mLights, tmpOther->mLights); }
 static void CopyCheckpoints(void)
-{ CopyVector(mapData.mCheckpoints, tmpOther->mCheckpoints); }
+{ CopyVector(mapData->mCheckpoints, tmpOther->mCheckpoints); }
 static void CopyEntities(void)
-{ CopyVector(mapData.mEntities, tmpOther->mEntities); }
+{ CopyVector(mapData->mEntities, tmpOther->mEntities); }
 static void CopyVertices(void)
-{ CopyVector(mapData.mVertices, tmpOther->mVertices); }
+{ CopyVector(mapData->mVertices, tmpOther->mVertices); }
 static void CopyIndices(void)
-{ CopyVector(mapData.mIndices, tmpOther->mIndices); }
+{ CopyVector(mapData->mIndices, tmpOther->mIndices); }
 
 const CMapData& CMapData::operator=(const CMapData& other)
 {
@@ -597,6 +598,17 @@ void CMapData::Clear(void)
     mPath.clear();
     mName.clear();
     mModified = true;
+
+    mCheckpoints.reserve(MAX_MAP_CHECKPOINTS);
+    mSpawns.reserve(MAX_MAP_SPAWNS);
+    
+    // always at least one spawn for the player
+    const mapspawn_t s = {
+        .xyz{ 0, 0, 0 },
+        .entitytype = ET_PLAYR,
+        .entityid = 0
+    };
+    mSpawns.emplace_back(s);
 }
 
 /*
@@ -608,18 +620,18 @@ void CheckAutoSave(void)
     time_t now;
     time(&now);
 
-    if (mapData.mModified || !s_start) {
+    if (mapData->mModified || !s_start) {
         s_start = now;
         return;
     }
 
-    if ((now - s_start) > (60 * editor->mConfig->mAutoSaveTime)) {
-        if (editor->mConfig->mAutoSave) {
+    if ((now - s_start) > (60 * gameConfig->mAutoSaveTime)) {
+        if (gameConfig->mAutoSave) {
             const char *strMsg;
 
             strMsg = "Autosaving map...";
             Printf("%s", strMsg);
-            Map_Save(mapData.mName.c_str());
+            Map_Save(mapData->mName.c_str());
         }
         else {
             Printf("Autosave skipped...");

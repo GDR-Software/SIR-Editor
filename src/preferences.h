@@ -81,4 +81,6 @@ public:
     CPrefs mPrefs;
 };
 
+extern std::unique_ptr<CGameConfig> gameConfig;
+
 #endif

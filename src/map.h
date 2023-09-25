@@ -37,7 +37,7 @@ public:
     const CMapData& operator=(const CMapData& other);
 };
 
-extern CMapData mapData;
+extern std::unique_ptr<CMapData> mapData;
 extern char mapname[1024];
 
 void Map_New(void);

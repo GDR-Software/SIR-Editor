@@ -27,20 +27,23 @@ static void GenIndexes(void)
 
 int main(int argc, char **argv)
 {
-    gui = new Window;
-    editor = new CEditor;
+    gui = std::make_unique<Window>();
+    editor = std::make_unique<CEditor>();
+    gameConfig = std::make_unique<CGameConfig>();
+    mapData = std::make_unique<CMapData>();
+    project = std::make_unique<CProject>();
 
     editor->ReloadFileCache();
-    editor->mConfig->LoadMobList();
+    gameConfig->LoadMobList();
 
     GenIndexes();
 
     // if we're given something from the command line, load it up
-    if (argv[1] && N_stricmp(GetExtension(argv[1]), "map")) {
-        Map_Load(argv[1]);
+    if (argv[1] && N_stricmp(GetExtension(argv[1]), "proj")) {
+        Project_Load(argv[1]);
     }
     else {
-        Map_New();
+        Project_New();
     }
 
     while (1) {

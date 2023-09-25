@@ -142,8 +142,15 @@ INLINE const char *GetAbsolutePath(const char *path)
 char* BuildOSPath(const char *curPath, const char *gamepath, const char *npath);
 
 template<typename A, typename B, typename C>
-INLINE constexpr A clamp(A value, B min, C max)
-{ return value > max ? max : value < min ? min : value; }
+INLINE A clamp(A value, B min, C max)
+{
+    if (value > max) {
+        return max;
+    } else if (value < min) {
+        return min;
+    }
+    return value;
+}
 
 #if 0
 INLINE int32_t clamp(int32_t value, int32_t min, int32_t max)
@@ -212,6 +219,9 @@ Editor-specific stuff
 #include "entity.h"
 #include "map.h"
 #include "parse.h"
+#include "Texture.h"
+#include "tileset.h"
+#include "project.h"
 
 #if 0
 #undef new

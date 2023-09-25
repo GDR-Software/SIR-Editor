@@ -247,9 +247,9 @@ void CEventQueue::PumpKeyEvents(void)
             break;
 		case SDL_MOUSEWHEEL:
             if (event.wheel.y > 0 && editor->mode != MODE_EDIT) // wheel up
-				gui->mCameraZoom -= editor->mConfig->mCameraZoomSpeed;
+				gui->mCameraZoom -= gameConfig->mCameraZoomSpeed;
             if (event.wheel.y < 0 && editor->mode != MODE_EDIT) // wheel down
-				gui->mCameraZoom += editor->mConfig->mCameraZoomSpeed;
+				gui->mCameraZoom += gameConfig->mCameraZoomSpeed;
 			break;
 		};
 	}

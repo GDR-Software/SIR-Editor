@@ -26,10 +26,11 @@ void CTexture::Load(const std::string& path)
     mTexBuffer = image;
     LoadFile(path.c_str(), (void **)&mFileBuf);
 
+    Printf("[CTexture::Load] Initializing OpenGL texture object...");
     if (mName != GetFilename(path.c_str()))
         mName = GetFilename(path.c_str());
     
-    switch (editor->mConfig->mTextureFiltering) {
+    switch (gameConfig->mTextureFiltering) {
     case 0: // Nearest
         min = GL_NEAREST;
         mag = GL_NEAREST;
@@ -55,4 +56,6 @@ void CTexture::Load(const std::string& path)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, mWidth, mHeight, 0, mChannels == 4 ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, image);
     Unbind();
+
+    Printf("[CTexture::Load] done");
 }
