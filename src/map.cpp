@@ -470,6 +470,8 @@ CMapData::CMapData(void)
     mSpawns.reserve(MAX_MAP_SPAWNS);
 
     memset(mTiles.data(), 0, sizeof(*mTiles.data()) * MAX_MAP_TILES);
+
+    CalcDrawData();
 }
 
 CMapData::~CMapData()
@@ -562,6 +564,9 @@ const CMapData& CMapData::operator=(const CMapData& other)
         group.join_all();
     }
 
+    auto func = [&]() { mapData->CalcDrawData(); };
+    boost::thread draw_data(func);
+
     {
         boost::thread_group group;
 
@@ -571,9 +576,70 @@ const CMapData& CMapData::operator=(const CMapData& other)
         group.join_all();
     }
 
+    draw_data.join();
+
     mModified = true;
     
     return *this;
+}
+
+typedef struct {
+    int curX, curY;
+    bool active;
+} tileMode_t;
+extern tileMode_t tileMode;
+void CMapData::RedoDrawData(void)
+{
+    mapvert_t *v;
+    uint32_t index;
+
+    auto convertCoords = [&](const glm::vec2& pos, mapvert_t *verts) {
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3( pos.x, pos.y, 0.0f ));
+        glm::mat4 mvp = gui->mViewProjection * model;
+        constexpr glm::vec4 positions[4] = {
+            { 0.5f,  0.5f, 0.0f, 1.0f},
+            { 0.5f, -0.5f, 0.0f, 1.0f},
+            {-0.5f, -0.5f, 0.0f, 1.0f},
+            {-0.5f,  0.5f, 0.0f, 1.0f},
+        };
+        for (uint32_t i = 0; i < arraylen(positions); i++) {
+            const glm::vec3 p = mvp * positions[i];
+        }
+    };
+    
+    index = 0;
+    v = mVertices.data();
+    for (uint32_t y = 0; y < mHeight; y++) {
+        for (uint32_t x = 0; x < mWidth; x++) {
+            convertCoords({ x - (mWidth * 0.5f), mHeight - y }, &v[index]);
+            for (uint32_t i = 0; i < 4; i++) {
+                if (mTiles[y * mWidth + x].flags & TILE_CHECKPOINT) {
+                    v[i].color[0] = 0.0f;
+                    v[i].color[1] = 1.0f;
+                    v[i].color[2] = 0.0f;
+                    v[i].color[3] = 1.0f;
+                }
+                else if (mTiles[y * mWidth + x].flags & TILE_SPAWN) {
+                    v[i].color[0] = 1.0f;
+                    v[i].color[1] = 0.0f;
+                    v[i].color[2] = 0.0f;
+                    v[i].color[3] = 0.5f;
+                }
+                else {
+                    v[i].color[0] = 1.0f;
+                    v[i].color[1] = 1.0f;
+                    v[i].color[2] = 1.0f;
+                    v[i].color[3] = 1.0f;
+                }
+
+                if (editor->mode == MODE_TILE && tileMode.curX == x && tileMode.curY == y) {
+                    v[i].color[3] = 0.0f;
+                }
+            }
+            index += 4;
+            v += 4;
+        }
+    }
 }
 
 /*
@@ -602,6 +668,7 @@ void CMapData::CalcDrawData(void)
     };
 
     auto calculateVertices = [&](std::vector<mapvert_t>& vertices, uint32_t width, uint32_t height) {
+        uint32_t index = 0;
         auto convertCoords = [&](const glm::vec2& pos, mapvert_t *verts) {
             glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3( pos.x, pos.y, 0.0f ));
             glm::mat4 mvp = gui->mViewProjection * model;
@@ -619,16 +686,14 @@ void CMapData::CalcDrawData(void)
         };
         for (uint32_t y = 0; y < height; y++) {
             for (uint32_t x = 0; x < width; x++) {
-                convertCoords({ x, y }, &vertices[y * width + x]);
+                convertCoords({ x, y }, &vertices[index]);
+                index += 4;
             }
         }
     };
 
-    boost::thread indices(calculateIndices, mIndices);
-    boost::thread vertices(calculateVertices, mVertices, mWidth, mHeight);
-
-    indices.join();
-    vertices.join();
+    calculateIndices(mIndices);
+    calculateVertices(mVertices, mWidth, mHeight);
 }
 
 void CMapData::SetMapSize(uint32_t width, uint32_t height)
@@ -661,8 +726,6 @@ void CMapData::Clear(void)
     for (auto& it : mTiles) {
         it.index = -1;
     }
-
-    CalcDrawData();
     
     // always at least one spawn for the player
     const mapspawn_t s = {

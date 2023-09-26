@@ -137,7 +137,7 @@ typedef struct {
 typedef struct {
     vec3_t xyz;
     vec2_t uv;
-    vec4_t color[4];
+    vec4_t color;
 } mapvert_t;
 
 typedef struct {

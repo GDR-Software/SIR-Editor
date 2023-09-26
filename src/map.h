@@ -32,6 +32,7 @@ public:
     void Clear(void);
     void SetMapSize(uint32_t width, uint32_t height);
     void CalcDrawData(void);
+    void RedoDrawData(void);
 
     boost::shared_mutex resourceLock;
 

@@ -8,6 +8,61 @@
 #include <stb/stb_sprintf.h>
 #include "gui.h"
 
+struct VertexAttrib
+{
+    uint32_t index;
+    uint32_t count;
+    uint32_t type;
+    uint32_t offset;
+
+    VertexAttrib(uint32_t _index, uint32_t _count, uint32_t _type, uint32_t _offset)
+        : index{ _index }, count{ _count }, type{ _type }, offset{ _offset } { }
+};
+
+class VertexCache
+{
+public:
+    GLuint mVaoId, mVboId, mIboId;
+    std::vector<VertexAttrib> mAttribs;
+    uint32_t mDataStride;
+
+    VertexCache(uint64_t numVertices, uint64_t numIndices, uint32_t dataSize) { InitBase(numVertices, numIndices, dataSize); }
+    ~VertexCache()
+    {
+        glDeleteVertexArrays(1, &mVaoId);
+        glDeleteBuffers(1, &mVboId);
+        glDeleteBuffers(1, &mIboId);
+    }
+
+    void ClearAttribs(void);
+    void SetAttribs(uint32_t stride, const std::initializer_list<VertexAttrib>& attribList);
+    void InitBase(uint64_t numVertices, uint64_t numIndices, uint32_t dataSize);
+    void Draw(const uint32_t *indices, const void *vertices, uint64_t numIndices, uint64_t numVertices) const;
+};
+
+
+struct BindCache
+{
+    INLINE BindCache(const VertexCache *cache)
+    { Bind(cache); }
+    INLINE ~BindCache()
+    { Unbind(); }
+
+    INLINE void Bind(const VertexCache *cache) const
+    {
+        glBindVertexArray(cache->mVaoId);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cache->mIboId);
+        glBindBuffer(GL_ARRAY_BUFFER, cache->mVboId);
+    }
+    INLINE void Unbind(void) const
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+    }
+};
+
+
 #define WINDOW_TITLE "GLNomad Level Editor"
 #define WINDOW_WIDTH 1920
 #define WINDOW_HEIGHT 1080
@@ -34,7 +89,8 @@ static void ImGui_MemFree(void *ptr, void *)
     FreeMemory(ptr);
 }
 
-static GLuint vaoId, vboId, iboId, uboId, shaderId;
+static VertexCache *mapCache;
+static GLuint uboId, shaderId;
 static GLint vpmId, lightsId;
 
 static void MakeViewMatrix(void)
@@ -137,50 +193,6 @@ static void InitUBO(void)
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
-static uint32_t numEnabledAttribs;
-
-static void SetMapVertPointers(void)
-{
-    for (uint32_t i = 0; i < numEnabledAttribs; i++) {
-        glDisableVertexAttribArray(i);
-    }
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(mapvert_t), (const void *)offsetof(mapvert_t, xyz));
-
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(mapvert_t), (const void *)offsetof(mapvert_t, uv));
-
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(mapvert_t), (const void *)offsetof(mapvert_t, color));
-
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(mapvert_t), (const void *)(offsetof(mapvert_t, color) + (sizeof(vec_t) * 3)));
-
-    numEnabledAttribs = 4;
-}
-
-static void SetVertexPointers(void)
-{
-    for (uint32_t i = 0; i < numEnabledAttribs; i++) {
-        glDisableVertexAttribArray(i);
-    }
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, xyz));
-
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, uv));
-
-    glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, color));
-
-    glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)(offsetof(Vertex, color) + (sizeof(float) * 3)));
-
-    numEnabledAttribs = 4;
-}
-
 static void InitGLObjects(void)
 {
     GLuint vertid, fragid;
@@ -261,24 +273,15 @@ static void InitGLObjects(void)
     "   }\n"
     "}\n";
 
-    glGenVertexArrays(1, &vaoId);
-    glGenBuffers(1, &vboId);
-    glGenBuffers(1, &iboId);
-
-    glBindVertexArray(vaoId);
-    glBindBuffer(GL_ARRAY_BUFFER, vboId);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * FRAME_VERTICES, NULL, GL_DYNAMIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * FRAME_INDICES, NULL, GL_DYNAMIC_DRAW);
-
-    numEnabledAttribs = 0;
-    SetVertexPointers();
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-
+    mapCache = new VertexCache(MAX_MAP_VERTICES, MAX_MAP_INDICES, sizeof(mapvert_t));
+    mapCache->SetAttribs(sizeof(mapvert_t), {
+        // index, count, type, offset
+        VertexAttrib( 0, 3, GL_FLOAT, (uint32_t)offsetof(mapvert_t, xyz) ),
+        VertexAttrib( 1, 2, GL_FLOAT, (uint32_t)offsetof(mapvert_t, uv) ),
+        VertexAttrib( 2, 3, GL_FLOAT, (uint32_t)offsetof(mapvert_t, color) ),
+        VertexAttrib( 3, 1, GL_FLOAT, (uint32_t)(offsetof(mapvert_t, color) + (sizeof(vec_t) * 3)) )
+    });
+    
     Printf("[Window::InitGLObjects] Compiling shaders...");
 
     vertid = GenShader(vertShader, GL_VERTEX_SHADER);
@@ -392,7 +395,6 @@ Window::Window(void)
     uint32_t unusedIds = 0;
     glDebugMessageControlARB(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, (GLuint *)&unusedIds, GL_TRUE);
 
-    mVertices = (Vertex *)GetClearedMemory(sizeof(*mVertices) * FRAME_VERTICES);
     InitGLObjects();
 
     Cmd_AddCommand("clear", Clear_f);
@@ -405,9 +407,7 @@ Window::~Window()
     FreeMemory(mVertices);
     FreeMemory(mIndices);
 
-    glDeleteVertexArrays(1, &vaoId);
-    glDeleteBuffers(1, &vboId);
-    glDeleteBuffers(1, &iboId);
+    delete mapCache;
 
     glDeleteProgram(shaderId);
 
@@ -527,21 +527,16 @@ static void PollEvents(void)
 static void DrawMap(void)
 {
     uint32_t numVertices, numIndices;
-    Vertex *v;
+    mapvert_t *v;
     mapspawn_t *s;
     mapcheckpoint_t *c;
-    const ImVec2 mousePos = ImGui::GetMousePos();
+    BindCache bind{mapCache};
 
-    v = gui->mVertices;
     numVertices = 0;
     numIndices = 0;
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glBindVertexArray(vaoId);
-    glBindBuffer(GL_ARRAY_BUFFER, vboId);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
 
     glUseProgram(shaderId);
     glUniformMatrix4fv(vpmId, 1, GL_FALSE, glm::value_ptr(gui->mViewProjection));
@@ -550,6 +545,10 @@ static void DrawMap(void)
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Light) * MAX_MAP_LIGHTS, lights);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+    mapData->RedoDrawData();
+    mapCache->Draw(mapData->mIndices.data(), mapData->mVertices.data(), mapData->mIndices.size(), mapData->mVertices.size());
+
+#if 0
     for (uint32_t y = 0; y < mapData->mHeight; y++) {
         for (uint32_t x = 0; x < mapData->mWidth; x++) {
             ConvertCoords(v, { x - (mapData->mWidth * 0.5f), mapData->mHeight - y });
@@ -592,16 +591,8 @@ static void DrawMap(void)
             numIndices += 6;
         }
     }
-    if (numVertices || numIndices) {
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
-        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
-        glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, NULL);
-    }
+#endif
     glUseProgram(0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
     GL_CheckError();
 }
 
@@ -681,52 +672,49 @@ void Window::EndFrame(void)
     SDL_GL_SwapWindow(mWindow);
 }
 
-class VertexCache
+void VertexCache::ClearAttribs(void)
 {
-public:
-    GLuint vaoId, vboId, iboId;
+    for (uint64_t i = 0; i < mAttribs.size(); i++) {
+        glDisableVertexAttribArray(i);
+    }
+    mAttribs.clear();
+}
 
-    VertexCache(uint64_t numVertices, uint64_t numIndices) { InitBase(numVertices, numIndices); }
-
-    void InitBase(uint64_t numVertices, uint64_t numIndices);
-};
-
-void VertexCache::InitBase(uint64_t numVertices, uint64_t numIndices)
+void VertexCache::SetAttribs(uint32_t stride, const std::initializer_list<VertexAttrib>& attribList)
 {
-    glGenVertexArrays(1, &vaoId);
-    glGenBuffers(1, &vboId);
-    glGenBuffers(1, &iboId);
+    mAttribs = attribList;
+    mDataStride = stride;
 
-    glBindBuffer(GL_ARRAY_BUFFER, vboId);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
+    for (uint64_t i = 0; i < mAttribs.size(); i++) {
+        glEnableVertexAttribArray(i);
+        glVertexAttribPointer(i, mAttribs[i].count, mAttribs[i].type, GL_FALSE, mDataStride, (const void *)(uintptr_t)mAttribs[i].offset);
+    }
+}
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * FRAME_VERTICES, NULL, GL_DYNAMIC_DRAW);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * FRAME_INDICES, NULL, GL_DYNAMIC_DRAW);
+void VertexCache::InitBase(uint64_t numVertices, uint64_t numIndices, uint32_t dataSize)
+{
+    mDataStride = dataSize;
 
-    numEnabledAttribs = 0;
-    SetVertexPointers();
+    glGenVertexArrays(1, &mVaoId);
+    glGenBuffers(1, &mVboId);
+    glGenBuffers(1, &mIboId);
+
+    glBindVertexArray(mVaoId);
+    glBindBuffer(GL_ARRAY_BUFFER, mVboId);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mIboId);
+
+    glBufferData(GL_ARRAY_BUFFER, dataSize * numVertices, NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * numIndices, NULL, GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 }
 
-struct BindCache
+void VertexCache::Draw(const uint32_t *indices, const void *vertices, uint64_t numIndices, uint64_t numVertices) const
 {
-    INLINE BindCache(const VertexCache *cache)
-    { Bind(cache); }
-    INLINE ~BindCache()
-    { Unbind(); }
+    glBufferSubData(GL_ARRAY_BUFFER, 0, mDataStride * numVertices, vertices);
+    glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, indices);
 
-    INLINE void Bind(const VertexCache *cache) const
-    {
-        glBindVertexArray(cache->vaoId);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cache->iboId);
-        glBindBuffer(GL_ARRAY_BUFFER, cache->vboId);
-    }
-    INLINE void Unbind(void) const
-    {
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-        glBindVertexArray(0);
-    }
-};
+    glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, NULL);
+}

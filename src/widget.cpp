@@ -300,6 +300,7 @@ static INLINE void Update_Map(void)
 
     if (g->width != mapData->mWidth || g->height != mapData->mHeight) {
         mapData->mTiles.resize(g->width * g->height);
+        mapData->CalcDrawData();
     }
 
     UPDATE_VAR(mapData->mWidth, g->width, g->widthChanged);
