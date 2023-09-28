@@ -64,7 +64,7 @@ void CPrefs::SetDefault(void)
     mPrefList.emplace_back("autoSave", "true", "config");
 
     mPrefList.emplace_back("textureDetail", "2", "graphics");
-    mPrefList.emplace_back("textureFiltering", "Bilinear", "graphics");
+    mPrefList.emplace_back("textureFiltering", "Trilinear", "graphics");
     
     mPrefList.emplace_back("moveSpeed", "1.5f", "camera");
     mPrefList.emplace_back("rotationSpeed", "1.0f", "camera");

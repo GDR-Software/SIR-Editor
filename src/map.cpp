@@ -470,8 +470,6 @@ CMapData::CMapData(void)
     mSpawns.reserve(MAX_MAP_SPAWNS);
 
     memset(mTiles.data(), 0, sizeof(*mTiles.data()) * MAX_MAP_TILES);
-
-    CalcDrawData();
 }
 
 CMapData::~CMapData()
@@ -564,9 +562,6 @@ const CMapData& CMapData::operator=(const CMapData& other)
         group.join_all();
     }
 
-    auto func = [&]() { mapData->CalcDrawData(); };
-    boost::thread draw_data(func);
-
     {
         boost::thread_group group;
 
@@ -575,8 +570,6 @@ const CMapData& CMapData::operator=(const CMapData& other)
 
         group.join_all();
     }
-
-    draw_data.join();
 
     mModified = true;
     
@@ -702,7 +695,6 @@ void CMapData::SetMapSize(uint32_t width, uint32_t height)
     mHeight = height;
     mTiles.resize(mWidth * mHeight);
     mModified = true;
-    CalcDrawData();
 }
 
 void CMapData::Clear(void)

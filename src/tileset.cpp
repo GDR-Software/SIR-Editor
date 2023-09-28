@@ -6,17 +6,17 @@ void CTileset::GenerateTiles(void)
         const glm::vec2 min = { (coords.x * spriteDims.x) / sheetDims.x, (coords.y * spriteDims.y) / sheetDims.x };
         const glm::vec2 max = { ((coords.x + 1) * spriteDims.x) / sheetDims.y, ((coords.y + 1) * spriteDims.y) / sheetDims.y };
 
-        texcoords[0][0] = min.x;
+        texcoords[0][0] = max.x;
         texcoords[0][1] = min.y;
 
         texcoords[1][0] = max.x;
-        texcoords[1][1] = min.y;
-        
-        texcoords[2][0] = max.x;
+        texcoords[1][1] = max.y;
+
+        texcoords[2][0] = min.x;
         texcoords[2][1] = max.y;
         
         texcoords[3][0] = min.x;
-        texcoords[3][1] = max.y;
+        texcoords[3][1] = min.y;
     };
     
     tileCountX = texData->mWidth / tileWidth;

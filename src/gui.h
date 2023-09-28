@@ -11,7 +11,6 @@ struct Vertex
     glm::vec3 xyz;
     glm::vec2 uv;
     glm::vec4 color;
-    float flags;
 };
 
 class Window

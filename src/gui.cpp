@@ -89,9 +89,23 @@ static void ImGui_MemFree(void *ptr, void *)
     FreeMemory(ptr);
 }
 
-static VertexCache *mapCache;
+static GLuint vaoId, vboId, iboId;
 static GLuint uboId, shaderId;
-static GLint vpmId, lightsId;
+static std::unordered_map<std::string, GLint> uniformCache;
+
+struct Light {
+    float birightness;
+    vec3_t origin;
+    vec3_t color;
+};
+
+#define FRAME_QUADS 0x8000
+#define FRAME_VERTICES (FRAME_QUADS*4)
+#define FRAME_INDICES (FRAME_QUADS*6)
+
+GLuint blockIndex;
+static GLint lightsId;
+static Light lights[MAX_MAP_LIGHTS];
 
 static void MakeViewMatrix(void)
 {
@@ -146,13 +160,26 @@ static GLuint GenShader(const char *source, GLenum type)
     return id;
 }
 
-static GLint GetUniform(const char *name)
+static void CacheUniform(const char *name)
 {
+    if (uniformCache.find(name) != uniformCache.end()) {
+        return; // already there
+    }
     GLint location = glGetUniformLocation(shaderId, name);
     if (location == -1) {
-        Error("Failed to find uniform %s in shader!", name);
+        GL_CheckError();
+        Error("Failed to init shader uniform '%s'", name);
     }
-    return location;
+    uniformCache[name] = location;
+}
+
+static GLint GetUniform(const char *name)
+{
+    std::unordered_map<std::string, GLint>::iterator it = uniformCache.find(name);
+    if (it == uniformCache.end()) {
+        Error("Failed to find shader uniform '%s'", name);
+    }
+    return it->second;
 }
 
 static void GL_ErrorCallback(GLenum source,GLenum type,GLuint id,GLenum severity,GLsizei length,const GLchar *message,const void *userParam)
@@ -166,19 +193,6 @@ static void GL_ErrorCallback(GLenum source,GLenum type,GLuint id,GLenum severity
         break;
     };
 }
-
-struct Light {
-    float birightness;
-    vec3_t origin;
-    vec3_t color;
-};
-
-#define FRAME_QUADS 0x8000
-#define FRAME_VERTICES (FRAME_QUADS*4)
-#define FRAME_INDICES (FRAME_QUADS*6)
-
-GLuint blockIndex;
-static Light lights[MAX_MAP_LIGHTS];
 
 static void InitUBO(void)
 {
@@ -223,7 +237,7 @@ static void InitGLObjects(void)
     "}\n";
     const char *fragShader =
     "#version 330 core\n"
-    "#define MAX_MAP_LIGHTS 1024"
+    "#define MAX_MAP_LIGHTS 256"
     "\n"
     "out vec4 a_Color;\n"
     "\n"
@@ -233,18 +247,20 @@ static void InitGLObjects(void)
     "   vec3 color;\n"
     "};\n"
     "\n"
-    "uniform int u_numLights;\n"
     "uniform sampler2D u_SpriteSheet;\n"
+#if 0
     "uniform float u_AmbientLight;\n"
     "layout(std140) uniform u_Lights {\n"
     "   Light lights[MAX_MAP_LIGHTS];\n"
     "};\n"
+#endif
     "\n"
     "in vec3 v_Position;\n"
     "in vec2 v_TexCoords;\n"
     "in vec3 v_Color;\n"
     "in float v_Alpha;\n"
     "\n"
+#if 0
     "vec4 applyLights() {\n"
     "   vec4 color;\n"
     "   for (int i = 0; i < u_numLights; i++) {\n"
@@ -254,6 +270,7 @@ static void InitGLObjects(void)
     "   color.a += u_AmbientLight;\n"
     "   return color;\n"
     "}\n"
+#endif
     "vec4 toGreyscale(in vec4 color) {\n"
     "   float avg = (color.r + color.g + color.b) / 3.0;\n"
     "   return vec4(avg, avg, avg, 1.0);\n"
@@ -263,25 +280,36 @@ static void InitGLObjects(void)
     "}\n"
     "\n"
     "void main() {\n"
-    "   a_Color.rgb = v_Color.rgb;\n"
-    "   a_Color.a = v_Alpha;\n"
-    "   if (a_Color.rgb == vec3(1.0) && v_Alpha == 1.0) {\n"
-    "   }\n"
-    "   if (v_Alpha != 1.0) {\n"
-    "      vec4 greyscale = toGreyscale(a_Color);\n"
-    "      a_Color = colorize(greyscale, vec4(0.0, 0.0, 0.5, 1.0));\n"
-    "   }\n"
+    "   a_Color = texture(u_SpriteSheet, v_TexCoords);\n"
     "}\n";
 
-    mapCache = new VertexCache(MAX_MAP_VERTICES, MAX_MAP_INDICES, sizeof(mapvert_t));
-    mapCache->SetAttribs(sizeof(mapvert_t), {
-        // index, count, type, offset
-        VertexAttrib( 0, 3, GL_FLOAT, (uint32_t)offsetof(mapvert_t, xyz) ),
-        VertexAttrib( 1, 2, GL_FLOAT, (uint32_t)offsetof(mapvert_t, uv) ),
-        VertexAttrib( 2, 3, GL_FLOAT, (uint32_t)offsetof(mapvert_t, color) ),
-        VertexAttrib( 3, 1, GL_FLOAT, (uint32_t)(offsetof(mapvert_t, color) + (sizeof(vec_t) * 3)) )
-    });
-    
+    glGenVertexArrays(1, &vaoId);
+    glGenBuffers(1, &vboId);
+    glGenBuffers(1, &iboId);
+
+    glBindVertexArray(vaoId);
+    glBindBuffer(GL_ARRAY_BUFFER, vboId);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex) * FRAME_VERTICES, NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * FRAME_INDICES, NULL, GL_DYNAMIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, xyz));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, uv));
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, color));
+
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)(offsetof(Vertex, color) + (sizeof(vec_t) * 3)));
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
     Printf("[Window::InitGLObjects] Compiling shaders...");
 
     vertid = GenShader(vertShader, GL_VERTEX_SHADER);
@@ -298,18 +326,14 @@ static void InitGLObjects(void)
 
     CheckProgram();
 
-    InitUBO();
-
     Printf("[Window::InitGLObjects] Cleaning up shaders...");
 
     glDeleteShader(vertid);
     glDeleteShader(fragid);
     glUseProgram(0);
 
-    vpmId = GetUniform("u_ViewProjection");
-    lightsId = glGetUniformBlockIndex(shaderId, "u_Lights");
-    glUniformBlockBinding(shaderId, lightsId, 0);
-
+    CacheUniform("u_ViewProjection");
+    CacheUniform("u_SpriteSheet");
 
     Printf("[Window::InitGLObjects] Finished");
     
@@ -340,6 +364,8 @@ static void TileModeInfo_f(void)
 
 Window::Window(void)
 {
+    uint32_t offset, i;
+
     if (SDL_Init(SDL_INIT_EVENTS | SDL_INIT_VIDEO) < 0) {
         Error("[Window::Init] SDL_Init failed, reason: %s", SDL_GetError());
     }
@@ -395,6 +421,22 @@ Window::Window(void)
     uint32_t unusedIds = 0;
     glDebugMessageControlARB(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, (GLuint *)&unusedIds, GL_TRUE);
 
+    mVertices = (Vertex *)GetMemory(sizeof(*mVertices) * FRAME_VERTICES);
+    mIndices = (uint32_t *)GetMemory(sizeof(*mIndices) * FRAME_INDICES);
+
+    offset = 0;
+    for (i = 0; i < FRAME_INDICES; i += 6) {
+        mIndices[i + 0] = offset + 0;
+        mIndices[i + 1] = offset + 1;
+        mIndices[i + 2] = offset + 2;
+
+        mIndices[i + 3] = offset + 3;
+        mIndices[i + 4] = offset + 2;
+        mIndices[i + 5] = offset + 0;
+
+        offset += 4;
+    }
+
     InitGLObjects();
 
     Cmd_AddCommand("clear", Clear_f);
@@ -404,11 +446,14 @@ Window::Window(void)
 
 Window::~Window()
 {
-    FreeMemory(mVertices);
-    FreeMemory(mIndices);
-
-    delete mapCache;
-
+    if (mVertices)
+        FreeMemory(mVertices);
+    if (mIndices)
+        FreeMemory(mIndices);
+    
+    glDeleteVertexArrays(1, &vaoId);
+    glDeleteBuffers(1, &vboId);
+    glDeleteBuffers(1, &iboId);
     glDeleteProgram(shaderId);
 
     ImGui_ImplSDL2_Shutdown();
@@ -527,10 +572,9 @@ static void PollEvents(void)
 static void DrawMap(void)
 {
     uint32_t numVertices, numIndices;
-    mapvert_t *v;
+    Vertex *v;
     mapspawn_t *s;
     mapcheckpoint_t *c;
-    BindCache bind{mapCache};
 
     numVertices = 0;
     numIndices = 0;
@@ -538,23 +582,28 @@ static void DrawMap(void)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    glBindVertexArray(vaoId);
+    glBindBuffer(GL_ARRAY_BUFFER, vboId);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
+
     glUseProgram(shaderId);
-    glUniformMatrix4fv(vpmId, 1, GL_FALSE, glm::value_ptr(gui->mViewProjection));
+    glUniformMatrix4fv(GetUniform("u_ViewProjection"), 1, GL_FALSE, glm::value_ptr(gui->mViewProjection));
 
-    glBindBuffer(GL_UNIFORM_BUFFER, uboId);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Light) * MAX_MAP_LIGHTS, lights);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+//    glBindBuffer(GL_UNIFORM_BUFFER, uboId);
+//    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Light) * MAX_MAP_LIGHTS, lights);
+//    glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    mapData->RedoDrawData();
-    mapCache->Draw(mapData->mIndices.data(), mapData->mVertices.data(), mapData->mIndices.size(), mapData->mVertices.size());
+    glUniform1i(GetUniform("u_SpriteSheet"), 0);
+    glActiveTexture(GL_TEXTURE0);
+    project->texData->Bind();
 
-#if 0
+    v = gui->mVertices;
     for (uint32_t y = 0; y < mapData->mHeight; y++) {
         for (uint32_t x = 0; x < mapData->mWidth; x++) {
             ConvertCoords(v, { x - (mapData->mWidth * 0.5f), mapData->mHeight - y });
 
             if (numVertices + 4 >= FRAME_VERTICES) {
-                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(*v) * numVertices, gui->mVertices);
+                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Vertex) * numVertices, gui->mVertices);
                 glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
                 glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, NULL);
                 v = gui->mVertices;
@@ -563,6 +612,8 @@ static void DrawMap(void)
             }
    
             for (uint32_t i = 0; i < 4; i++) {
+                v[i].uv[0] = mapData->mTiles[y * mapData->mWidth + x].texcoords[i][0];
+                v[i].uv[1] = mapData->mTiles[y * mapData->mWidth + x].texcoords[i][1];
                 if (mapData->mTiles[y * mapData->mWidth + x].flags & TILE_CHECKPOINT) {
                     v[i].color[0] = 0.0f;
                     v[i].color[1] = 1.0f;
@@ -591,7 +642,22 @@ static void DrawMap(void)
             numIndices += 6;
         }
     }
-#endif
+    if (numVertices || numIndices) {
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Vertex) * numVertices, gui->mVertices);
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
+        glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, NULL);
+        v = gui->mVertices;
+        numVertices = 0;
+        numIndices = 0;
+    }
+
+    if (project->texData->mId != 0) {
+        project->texData->Unbind();
+    }
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
     glUseProgram(0);
     GL_CheckError();
 }
@@ -686,8 +752,8 @@ void VertexCache::SetAttribs(uint32_t stride, const std::initializer_list<Vertex
     mDataStride = stride;
 
     for (uint64_t i = 0; i < mAttribs.size(); i++) {
-        glEnableVertexAttribArray(i);
-        glVertexAttribPointer(i, mAttribs[i].count, mAttribs[i].type, GL_FALSE, mDataStride, (const void *)(uintptr_t)mAttribs[i].offset);
+        glEnableVertexAttribArray(mAttribs[i].index);
+        glVertexAttribPointer(mAttribs[i].index, mAttribs[i].count, mAttribs[i].type, GL_FALSE, mDataStride, (const void *)(uintptr_t)mAttribs[i].offset);
     }
 }
 
