@@ -459,6 +459,71 @@ void Map_Save(const char *filename)
     mapData->mModified = false;
 }
 
+static void AddLump(const void *data, uint64_t size, int lumpnum, mapheader_t *header, FileStream *file)
+{
+    lump_t *lump;
+
+    lump = &header->lumps[lumpnum];
+    lump->length = size;
+    lump->fileofs = file->GetPosition();
+
+    file->Write(data, PAD(size, sizeof(uint32_t)));
+}
+
+template<typename T>
+static void CopyLump(std::vector<T>& dest, uint64_t size, int lumpnum, mapheader_t *header)
+{
+    uint64_t length, ofs;
+
+    length = header->lumps[lumpnum].length;
+    ofs = header->lumps[lumpnum].fileofs;
+
+    if (length % size)
+        Error("BMF_LoadFile: funny lump size");
+    
+    dest.resize(length / size);
+    memcpy(dest.data(), (byte *)header + ofs, length);
+}
+
+void BMF_WriteFile(const char *filename)
+{
+    char rpath[MAX_OSPATH*2+1];
+    FileStream file;
+    bmf_t out;
+    uint64_t pos;
+
+    snprintf(rpath, sizeof(rpath), "%s%s", gameConfig->mEditorPath.c_str(), filename);
+    if (!GetExtension(filename) || N_stricmp(GetExtension(filename), "map")) {
+        snprintf(rpath, sizeof(rpath), "%s%s.bmf", gameConfig->mEditorPath.c_str(), filename);
+    }
+
+    if (!file.Open(filename, "w")) {
+        Error("BMF_WriteFile: failed to open file '%s' in write mode", rpath);
+    }
+
+    out.ident = LEVEL_IDENT;
+    out.version = LEVEL_VERSION;
+
+    out.map.ident = MAP_IDENT;
+    out.map.version = MAP_VERSION;
+
+    file.Write(&out.ident, sizeof(out.ident));
+    file.Write(&out.version, sizeof(out.version));
+
+    // overwritten later
+    pos = file.GetPosition();
+    file.Write(&out.map, sizeof(mapheader_t));
+
+    AddLump(mapData->mTiles.data(), sizeof(maptile_t) * mapData->mTiles.size(), LUMP_TILES, &out.map, &file);
+    AddLump(mapData->mCheckpoints.data(), sizeof(mapcheckpoint_t) * mapData->mCheckpoints.size(), LUMP_CHECKPOINTS, &out.map, &file);
+    AddLump(mapData->mSpawns.data(), sizeof(mapspawn_t) * mapData->mSpawns.size(), LUMP_SPAWNS, &out.map, &file);
+    AddLump(mapData->mLights.data(), sizeof(maptile_t) * mapData->mLights.size(), LUMP_LIGHTS, &out.map, &file);
+
+    file.Seek(pos, SEEK_SET);
+    file.Write(&out.map, sizeof(mapheader_t));
+
+}
+
 CMapData::CMapData(void)
 {
     mWidth = 16;
@@ -575,66 +640,6 @@ const CMapData& CMapData::operator=(const CMapData& other)
     
     return *this;
 }
-
-typedef struct {
-    int curX, curY;
-    bool active;
-} tileMode_t;
-extern tileMode_t tileMode;
-void CMapData::RedoDrawData(void)
-{
-    mapvert_t *v;
-    uint32_t index;
-
-    auto convertCoords = [&](const glm::vec2& pos, mapvert_t *verts) {
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3( pos.x, pos.y, 0.0f ));
-        glm::mat4 mvp = gui->mViewProjection * model;
-        constexpr glm::vec4 positions[4] = {
-            { 0.5f,  0.5f, 0.0f, 1.0f},
-            { 0.5f, -0.5f, 0.0f, 1.0f},
-            {-0.5f, -0.5f, 0.0f, 1.0f},
-            {-0.5f,  0.5f, 0.0f, 1.0f},
-        };
-        for (uint32_t i = 0; i < arraylen(positions); i++) {
-            const glm::vec3 p = mvp * positions[i];
-        }
-    };
-    
-    index = 0;
-    v = mVertices.data();
-    for (uint32_t y = 0; y < mHeight; y++) {
-        for (uint32_t x = 0; x < mWidth; x++) {
-            convertCoords({ x - (mWidth * 0.5f), mHeight - y }, &v[index]);
-            for (uint32_t i = 0; i < 4; i++) {
-                if (mTiles[y * mWidth + x].flags & TILE_CHECKPOINT) {
-                    v[i].color[0] = 0.0f;
-                    v[i].color[1] = 1.0f;
-                    v[i].color[2] = 0.0f;
-                    v[i].color[3] = 1.0f;
-                }
-                else if (mTiles[y * mWidth + x].flags & TILE_SPAWN) {
-                    v[i].color[0] = 1.0f;
-                    v[i].color[1] = 0.0f;
-                    v[i].color[2] = 0.0f;
-                    v[i].color[3] = 0.5f;
-                }
-                else {
-                    v[i].color[0] = 1.0f;
-                    v[i].color[1] = 1.0f;
-                    v[i].color[2] = 1.0f;
-                    v[i].color[3] = 1.0f;
-                }
-
-                if (editor->mode == MODE_TILE && tileMode.curX == x && tileMode.curY == y) {
-                    v[i].color[3] = 0.0f;
-                }
-            }
-            index += 4;
-            v += 4;
-        }
-    }
-}
-
 /*
 map vertices and indices aren't saved to the text based .map format
 */

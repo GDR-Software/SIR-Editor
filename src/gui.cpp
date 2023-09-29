@@ -7,6 +7,8 @@
 #define STB_SPRINTF_IMPLEMENTATION
 #include <stb/stb_sprintf.h>
 #include "gui.h"
+#include "stb_image.h"
+#include <SDL2/SDL_image.h>
 
 struct VertexAttrib
 {
@@ -365,6 +367,7 @@ static void TileModeInfo_f(void)
 Window::Window(void)
 {
     uint32_t offset, i;
+    int width, height, channels;
 
     if (SDL_Init(SDL_INIT_EVENTS | SDL_INIT_VIDEO) < 0) {
         Error("[Window::Init] SDL_Init failed, reason: %s", SDL_GetError());
@@ -390,6 +393,13 @@ Window::Window(void)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
     SDL_GL_SetSwapInterval(-1);
+
+    // load and set the icon
+    SDL_RWops *rw = SDL_RWFromFile("icon.png", "rb");
+    SDL_Surface *icon = IMG_LoadPNG_RW(rw);
+    SDL_SetWindowIcon(mWindow, icon);
+    SDL_RWclose(rw);
+    SDL_FreeSurface(icon);
 
     Printf("[Window::Init] loading gl procs");
 
@@ -569,6 +579,14 @@ static void PollEvents(void)
     }
 }
 
+static GLuint curIbo;
+
+static void DrawElements(uint64_t numIndices)
+{
+    SDL_GL_MakeCurrent(gui->mWindow, gui->mContext);
+    glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, NULL);
+}
+
 static void DrawMap(void)
 {
     uint32_t numVertices, numIndices;
@@ -654,12 +672,56 @@ static void DrawMap(void)
     if (project->texData->mId != 0) {
         project->texData->Unbind();
     }
+
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
     glUseProgram(0);
-    GL_CheckError();
+}
+
+static void DrawGraph(void)
+{
+    const uint64_t width = gui->mWindowWidth * 0.5f;
+    const uint64_t height = gui->mWindowHeight * 0.5f;
+    Vertex *v;
+    uint32_t numVertices, numIndices;
+
+    numVertices = 0;
+    numIndices = 0;
+    v = gui->mVertices;
+
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    for (uint64_t y = 0; y < height; ++y) {
+        for (uint64_t x = 0; x < width; ++x) {
+            ConvertCoords(v, { x, y });
+
+            if (numVertices + 4 >= FRAME_VERTICES) {
+                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Vertex) * numVertices, gui->mVertices);
+                glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
+                glDrawElements(GL_LINES, numIndices, GL_UNSIGNED_INT, NULL);
+                v = gui->mVertices;
+                numVertices = 0;
+                numIndices = 0;
+            }
+            
+            numIndices += 6;
+            numVertices += 4;
+            v += 4;
+        }
+    }
+    if (numVertices || numIndices) {
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Vertex) * numVertices, gui->mVertices);
+        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
+        glDrawElements(GL_LINES, numIndices, GL_UNSIGNED_INT, NULL);
+        v = gui->mVertices;
+        numVertices = 0;
+        numIndices = 0;
+    }
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glUseProgram(0);
 }
 
 void Window::BeginFrame(void)
@@ -679,6 +741,7 @@ void Window::BeginFrame(void)
     ImGui_ImplOpenGL3_NewFrame();
 
     DrawMap();
+//    DrawGraph();
 }
 
 void Window::Print(const char *fmt, ...)

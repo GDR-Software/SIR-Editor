@@ -27,6 +27,7 @@ public:
 
     SDL_Window *mWindow;
     SDL_GLContext mContext;
+    void *iconBuf;
 
     Vertex *mVertices;
     uint32_t *mIndices;

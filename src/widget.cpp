@@ -311,6 +311,11 @@ static INLINE void Update_Map(void)
         mapData->CalcDrawData();
     }
 
+    if (g->nameChanged) {
+        SDL_SetWindowTitle(gui->mWindow, g->name);
+    }
+
+    UPDATE_VAR(mapData->mName, g->name, g->nameChanged);
     UPDATE_VAR(mapData->mWidth, g->width, g->widthChanged);
     UPDATE_VAR(mapData->mHeight, g->height, g->heightChanged);
     UPDATE_VAR(mapData->mCheckpoints, g->numCheckpoints, g->checkpointsChanged);
@@ -461,7 +466,7 @@ static void TileMode(void)
     CHECK_VAR(g->isCheckpoint, mapData->mTiles[tileMode.curY * mapData->mWidth + tileMode.curX].flags & TILE_CHECKPOINT, !g->isCheckpointChanged);
     CHECK_VAR(g->isSpawn, mapData->mTiles[tileMode.curY * mapData->mWidth + tileMode.curX].flags & TILE_SPAWN, !g->isSpawnChanged);
     
-    if (ImGui::Begin("Tile Info", &g->open, 0)) {
+    if (ImGui::Begin("Tile Info", &g->open, ImGuiWindowFlags_NoResize)) {
         ImGui::Text("Tile X: %i", g->x);
         ImGui::Text("Tile Y: %i", g->y);
 
@@ -532,6 +537,35 @@ static void TileMode(void)
                 g->tileIndex = -1;
             }
         }
+
+        //
+        // Tile Side Physics
+        //
+        ImGui::SeparatorText("Sides");
+        ImGui::BeginTable(" ", 3);
+        {
+            const ImVec2 buttonSize = { 86, 48 };
+
+            ImGui::TableNextColumn();
+            ImGui::Button("North West", buttonSize);
+            ImGui::TableNextColumn();
+            ImGui::Button("North", buttonSize);
+            ImGui::TableNextColumn();
+            ImGui::Button("North East", buttonSize);
+            ImGui::TableNextColumn();
+            ImGui::Button("West", buttonSize);
+            ImGui::TableNextColumn();
+            ImGui::Button("Inside", buttonSize);
+            ImGui::TableNextColumn();
+            ImGui::Button("East", buttonSize);
+            ImGui::TableNextColumn();
+            ImGui::Button("South West", buttonSize);
+            ImGui::TableNextColumn();
+            ImGui::Button("South", buttonSize);
+            ImGui::TableNextColumn();
+            ImGui::Button("South East", buttonSize);
+        }
+        ImGui::EndTable();
 
         //
         // Tile Color

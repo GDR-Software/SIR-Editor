@@ -114,11 +114,9 @@ typedef struct {
 #define LUMP_CHECKPOINTS 1
 #define LUMP_SPAWNS 2
 #define LUMP_LIGHTS 3
-#define LUMP_VERTICES 4
-#define LUMP_INDICES 5
-#define LUMP_TILESET 6
+#define LUMP_TILESET 4
 
-#define NUMLUMPS 7
+#define NUMLUMPS 5
 
 typedef struct {
     float brightness;
@@ -127,11 +125,12 @@ typedef struct {
 } maplight_t;
 
 typedef struct {
-    int32_t index;
-    uint32_t flags;
-    uvec3_t pos;
-    vec4_t color;
     float texcoords[4][2];
+    uint32_t sides[5]; // for physics
+    vec4_t color;
+    uvec3_t pos;
+    int32_t index; // tileset texture index, -1 if not bound
+    uint32_t flags;
 } maptile_t;
 
 typedef struct {
@@ -189,7 +188,6 @@ typedef struct {
     
     mapheader_t map;
     tile2d_header_t tileset;
-    tex2d_t texture;
 } bmf_t;
 
 #endif

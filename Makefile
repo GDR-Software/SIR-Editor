@@ -37,7 +37,7 @@ $(O)/%.o: Dependencies/src/%.cpp
 	$(COMPILE)
 
 $(EXE): $(OBJS) $(DEPS)
-	$(CC) $(CFLAGS) $(OBJS) $(DEPS) -o $(EXE) -lGL -lSDL2 libEASTL.a -lbacktrace -lbz2 -lz -lboost_thread -lboost_chrono
+	$(CC) $(CFLAGS) $(OBJS) $(DEPS) -o $(EXE) -lGL -lSDL2 libEASTL.a -lbacktrace -lbz2 -lz -lboost_thread -lboost_chrono -lSDL2_image
 
 clean:
 	rm $(O)/*
