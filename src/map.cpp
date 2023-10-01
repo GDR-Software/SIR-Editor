@@ -19,12 +19,15 @@ void Map_New(void)
     mapData->Clear();
     mapData->mPath = pwdString.string() + "/Data/untitled-map.map";
     mapData->mName = "untitled-map";
+    SDL_SetWindowTitle(gui->mWindow, mapData->mName.c_str());
 }
 
 typedef enum {
     CHUNK_CHECKPOINT,
     CHUNK_SPAWN,
     CHUNK_LIGHT,
+    CHUNK_TILE,
+    CHUNK_TILESET,
     
     CHUNK_INVALID
 } chunkType_t;
@@ -33,6 +36,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
 {
     const char *tok;
     chunkType_t type;
+    std::shared_ptr<CTileset>& tileset = project->tileset;
 
     type = CHUNK_INVALID;
 
@@ -67,6 +71,13 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 tmpData->mLights.emplace_back();
                 type = CHUNK_LIGHT;
             }
+            else if (!N_stricmp(tok, "map_tile")) {
+                tmpData->mTiles.emplace_back();
+                type = CHUNK_TILE;
+            }
+            else if (!N_stricmp(tok, "map_tileset")) {
+                type = CHUNK_TILESET;
+            }
             else {
                 COM_ParseWarning("unrecognized token for classname '%s'", tok);
                 return false;
@@ -88,6 +99,72 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
             tmpData->mSpawns.back().entitytype = static_cast<uint32_t>(atoi(tok));
         }
         //
+        // tileCountX <count>
+        //
+        else if (!N_stricmp(tok, "tileCountX")) {
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for tileset tileCountX");
+                return false;
+            }
+            tileset->tileCountX = static_cast<uint32_t>(atoi(tok));
+        }
+        //
+        // tileCountY <count>
+        //
+        else if (!N_stricmp(tok, "tileCountY")) {
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for tileset tileCountY");
+                return false;
+            }
+            tileset->tileCountY = static_cast<uint32_t>(atoi(tok));
+        }
+        //
+        // numTiles <number>
+        //
+        else if (!N_stricmp(tok, "numTiles")) {
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for tileset numTiles");
+                return false;
+            }
+            tileset->tiles.reserve(static_cast<uint32_t>(atoi(tok)));
+        }
+        //
+        // tileWidth <width>
+        //
+        else if (!N_stricmp(tok, "tileWidth")) {
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for tileset tileWidth");
+                return false;
+            }
+            tileset->tileWidth = static_cast<uint32_t>(atoi(tok));
+        }
+        //
+        // texture <path>
+        //
+        else if (!N_stricmp(tok, "texture")) {
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for tileset texture");
+                return false;
+            }
+            tileset->texData->mName = tok;
+        }
+        //
+        // tileHeight <height>
+        //
+        else if (!N_stricmp(tok, "tileHeight")) {
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for tileset tileHeight");
+                return false;
+            }
+            tileset->tileHeight = static_cast<uint32_t>(atoi(tok));
+        }
+        //
         // id <entityid>
         //
         else if (!N_stricmp(tok, "id")) {
@@ -103,6 +180,31 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
             tmpData->mSpawns.back().entityid = static_cast<uint32_t>(atoi(tok));
             if (!editor->ValidateEntityId(tmpData->mSpawns.back().entityid)) {
                 COM_ParseError("invalid entity id found in map spawn: %u", tmpData->mSpawns.back().entityid);
+                return false;
+            }
+        }
+        //
+        // flags <flags>
+        //
+        else if (!N_stricmp(tok, "flags")) {
+            if (type != CHUNK_TILE) {
+                COM_ParseError("found parameter \"flags\" in chunk that isn't a tile");
+                return false;
+            }
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for tile flags");
+                return false;
+            }
+            tmpData->mTiles.back().flags = static_cast<uint32_t>(atoi(tok));
+        }
+        //
+        // texcoords <texcoords...>
+        //
+        else if (!N_stricmp(tok, "texcoords")) {
+            float coords[4 * 2];
+            if (!Parse2DMatrix(text, 4, 2, coords)) {
+                COM_ParseError("failed to parse texture coordinates for map tile");
                 return false;
             }
         }
@@ -290,6 +392,20 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
             }
             tmpData->mHeight = static_cast<uint32_t>(atoi(tok));
         }
+        else if (!N_stricmp(tok, "ambientIntensity")) {
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for map ambient light");
+                return false;
+            }
+            tmpData->mAmbientIntensity = atof(tok);
+        }
+        else if (!N_stricmp(tok, "ambientColor")) {
+            if (!Parse1DMatrix(text, 3, &mapData->mAmbientColor[0])) {
+                COM_ParseError("failed to parse map ambient color");
+                return false;
+            }
+        }
         else if (!N_stricmp(tok, "numCheckpoints")) {
             tok = COM_ParseExt(text, qfalse);
             if (!tok[0]) {
@@ -313,6 +429,14 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
                 return false;
             }
             tmpData->mLights.reserve(static_cast<size_t>(atoi(tok)));
+        }
+        else if (!N_stricmp(tok, "numTiles")) {
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for map numTiles");
+                return false;
+            }
+            tmpData->mTiles.reserve(static_cast<size_t>(atoi(tok)));
         }
         else if (!N_stricmp(tok, "numEntities")) {
             tok = COM_ParseExt(text, qfalse);
@@ -348,7 +472,20 @@ void Map_LoadFile(IDataStream *file, const char *ext, const char *rpath)
     }
     else {
         *mapData = tmpData;
+        // we got a tileset from that
+        if (project->tileset->tiles.size()) {
+            std::string path;
+            if (!FileExists(project->tileset->texData->mName.c_str())) { // probably in Data/ directory
+                path = gameConfig->mEditorPath + project->tileset->texData->mName;
+            }
+            else {
+                path = project->tileset->texData->mName;
+            }
+            project->tileset->texData->Load(path);
+            project->tileset->GenerateTiles();
+        }
         mapData->mPath = rpath;
+        SDL_SetWindowTitle(gui->mWindow, mapData->mName.c_str());
     }
     FreeMemory(buf);
 }
@@ -407,8 +544,8 @@ static void SaveLights(IDataStream *file)
             "{\n"
             "classname map_light\n"
             "brightness %f\n"
-            "origin %f %f %f\n"
-            "color %hu %hu %hu %hu\n"
+            "pos %f %f %f\n"
+            "color %f %f %f %f\n"
             "}\n"
         , it.brightness, it.origin[0], it.origin[1], it.origin[2], it.color[0], it.color[1], it.color[2], it.color[3]);
         file->Write(buf, strlen(buf));
@@ -417,6 +554,28 @@ static void SaveLights(IDataStream *file)
 
 static void SaveTiles(IDataStream *file)
 {
+    char buf[1024];
+
+    for (const auto& it : mapData->mTiles) {
+        snprintf(buf, sizeof(buf),
+            "{\n"
+            "classname map_tile\n"
+            "pos %lu\n"
+            "texIndex %i\n"
+            "texcoords ( ( %f %f ) ( %f %f ) ( %f %f ) ( %f %f ) )\n"
+            "sides %hu %hu %hu %hu %hu\n"
+            "flags %i\n"
+            "}\n"
+        , (uint64_t)it.pos[1] * mapData->mWidth + it.pos[0],
+        it.index,
+        it.texcoords[0][0], it.texcoords[0][1],
+        it.texcoords[1][0], it.texcoords[1][1],
+        it.texcoords[2][0], it.texcoords[2][1],
+        it.texcoords[3][0], it.texcoords[3][1],
+        it.sides[0], it.sides[1], it.sides[2], it.sides[3], it.sides[4],
+        it.flags);
+        file->Write(buf, strlen(buf));
+    }
 }
 
 void Map_Save(const char *filename)
@@ -436,6 +595,7 @@ void Map_Save(const char *filename)
     }
 
     {
+        const std::shared_ptr<CTileset>& tileset = project->tileset;
         char buf[1024];
         snprintf(buf, sizeof(buf),
             "{\n"
@@ -446,13 +606,30 @@ void Map_Save(const char *filename)
             "numCheckpoints %lu\n"
             "numLights %lu\n"
             "numEntities %lu\n"
+            "numTiles %lu\n"
+            "ambientIntensity %f\n"
+            "ambientColor ( %f %f %f )\n"
+            "{\n"
+            // save the tileset as well
+            "classname map_tileset\n"
+            "texture %s\n"
+            "tileWidth %u\n"
+            "tileHeight %u\n"
+            "tileCountX %u\n"
+            "tileCountY %u\n"
+            "numTiles %lu\n"
+            "}\n"
         , mapData->mName.c_str(), mapData->mWidth, mapData->mHeight, mapData->mSpawns.size(), mapData->mCheckpoints.size(),
-        mapData->mLights.size(), mapData->mEntities.size());
+        mapData->mLights.size(), mapData->mEntities.size(), mapData->mTiles.size(), mapData->mAmbientIntensity,
+        mapData->mAmbientColor[0], mapData->mAmbientColor[1], mapData->mAmbientColor[2],
+        tileset->texData->mName.c_str(), tileset->tileWidth, tileset->tileHeight, tileset->tileCountX, tileset->tileCountY, tileset->tiles.size());
         file.Write(buf, strlen(buf));
     }
 
     SaveSpawns(&file);
     SaveCheckpoints(&file);
+    SaveLights(&file);
+    SaveTiles(&file);
 
     file.Write("}\n", 2);
 
@@ -529,6 +706,8 @@ CMapData::CMapData(void)
     mWidth = 16;
     mHeight = 16;
     mModified = true;
+    mAmbientColor = { 1.0f, 1.0f, 1.0f };
+    mAmbientIntensity = 0.0f;
 
     mTiles.resize(MAX_MAP_TILES);
     mCheckpoints.reserve(MAX_MAP_CHECKPOINTS);
@@ -612,6 +791,8 @@ const CMapData& CMapData::operator=(const CMapData& other)
     mWidth = other.mWidth;
     mHeight = other.mHeight;
     mName = other.mName;
+    mAmbientIntensity = other.mAmbientIntensity;
+    mAmbientColor = other.mAmbientColor;
 
     {
         boost::thread_group group;
@@ -706,6 +887,8 @@ void CMapData::Clear(void)
 {
     mWidth = 16;
     mHeight = 16;
+    mAmbientIntensity = 0.0f;
+    mAmbientColor = { 1.0f, 1.0f, 1.0f };
     mCheckpoints.clear();
     mSpawns.clear();
     mVertices.clear();

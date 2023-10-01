@@ -8,6 +8,7 @@ static  uint64_t com_tokenline;
 // for complex parser
 tokenType_t		com_tokentype;
 
+
 void COM_BeginParseSession( const char *name )
 {
 	com_lines = 1;
@@ -487,13 +488,15 @@ __reswitch:
 COM_MatchToken
 ==================
 */
-void COM_MatchToken( const char **buf_p, const char *match ) {
+bool COM_MatchToken( const char **buf_p, const char *match ) {
 	const char *token;
 
 	token = COM_Parse( buf_p );
 	if ( strcmp( token, match ) ) {
-	    Error( "MatchToken: %s != %s", token, match );
+	    COM_ParseError( "MatchToken: %s != %s", token, match );
+		return false;
 	}
+	return true;
 }
 
 
@@ -574,40 +577,56 @@ int ParseHex(const char *text)
     return value;
 }
 
-void Parse1DMatrix( const char **buf_p, int x, float *m ) {
+bool Parse1DMatrix( const char **buf_p, int x, float *m ) {
 	const char	*token;
 	int		i;
 
-	COM_MatchToken( buf_p, "(" );
+	if (!COM_MatchToken( buf_p, "(" )) {
+		return false;
+	}
 
 	for (i = 0 ; i < x; i++) {
 		token = COM_Parse( buf_p );
 		m[i] = atof( token );
 	}
 
-	COM_MatchToken( buf_p, ")" );
+	if (!COM_MatchToken( buf_p, ")" )) {
+		return false;
+	}
+	return true;
 }
 
-void Parse2DMatrix( const char **buf_p, int y, int x, float *m ) {
+bool Parse2DMatrix( const char **buf_p, int y, int x, float *m ) {
 	int		i;
 
-	COM_MatchToken( buf_p, "(" );
+	if (!COM_MatchToken( buf_p, "(" )) {
+		return false;
+	}
 
 	for (i = 0 ; i < y ; i++) {
 		Parse1DMatrix (buf_p, x, m + i * x);
 	}
 
-	COM_MatchToken( buf_p, ")" );
+	if (!COM_MatchToken( buf_p, ")" )) {
+		return false;
+	}
+	return true;
 }
 
-void Parse3DMatrix( const char **buf_p, int z, int y, int x, float *m ) {
+bool Parse3DMatrix( const char **buf_p, int z, int y, int x, float *m ) {
 	int		i;
 
-	COM_MatchToken( buf_p, "(" );
+	if (!COM_MatchToken( buf_p, "(" )) {
+		return false;
+	}
 
 	for (i = 0 ; i < z ; i++) {
 		Parse2DMatrix (buf_p, y, x, m + i * x*y);
 	}
 
-	COM_MatchToken( buf_p, ")" );
+	if (!COM_MatchToken( buf_p, ")" )) {
+		return false;
+	}
+
+	return true;
 }

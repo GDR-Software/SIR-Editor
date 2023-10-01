@@ -92,22 +92,12 @@ static void ImGui_MemFree(void *ptr, void *)
 }
 
 static GLuint vaoId, vboId, iboId;
-static GLuint uboId, shaderId;
+static GLuint shaderId;
 static std::unordered_map<std::string, GLint> uniformCache;
-
-struct Light {
-    float birightness;
-    vec3_t origin;
-    vec3_t color;
-};
 
 #define FRAME_QUADS 0x8000
 #define FRAME_VERTICES (FRAME_QUADS*4)
 #define FRAME_INDICES (FRAME_QUADS*6)
-
-GLuint blockIndex;
-static GLint lightsId;
-static Light lights[MAX_MAP_LIGHTS];
 
 static void MakeViewMatrix(void)
 {
@@ -148,40 +138,18 @@ static void CheckShader(GLuint id, GLenum type)
     }
 }
 
-static GLuint GenShader(const char *source, GLenum type)
+static GLuint GenShader(const char **source, uint32_t numSources, GLenum type)
 {
     GLuint id;
 
     id = glCreateShader(type);
     
-    glShaderSource(id, 1, &source, NULL);
+    glShaderSource(id, numSources, source, NULL);
     glCompileShader(id);
 
     CheckShader(id, type);
 
     return id;
-}
-
-static void CacheUniform(const char *name)
-{
-    if (uniformCache.find(name) != uniformCache.end()) {
-        return; // already there
-    }
-    GLint location = glGetUniformLocation(shaderId, name);
-    if (location == -1) {
-        GL_CheckError();
-        Error("Failed to init shader uniform '%s'", name);
-    }
-    uniformCache[name] = location;
-}
-
-static GLint GetUniform(const char *name)
-{
-    std::unordered_map<std::string, GLint>::iterator it = uniformCache.find(name);
-    if (it == uniformCache.end()) {
-        Error("Failed to find shader uniform '%s'", name);
-    }
-    return it->second;
 }
 
 static void GL_ErrorCallback(GLenum source,GLenum type,GLuint id,GLenum severity,GLsizei length,const GLchar *message,const void *userParam)
@@ -196,94 +164,39 @@ static void GL_ErrorCallback(GLenum source,GLenum type,GLuint id,GLenum severity
     };
 }
 
-static void InitUBO(void)
+static INLINE glm::vec3 CalcNormal(const Vertex *quad)
 {
-    blockIndex = glGetUniformBlockIndex(shaderId, "u_Lights");
-    glUniformBlockBinding(shaderId, blockIndex, 0);
-
-    glGenBuffers(1, &uboId);
-    glBindBuffer(GL_UNIFORM_BUFFER, uboId);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(Light) * MAX_MAP_LIGHTS, NULL, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, uboId);
-    glBindBufferRange(GL_UNIFORM_BUFFER, 0, uboId, 0, sizeof(Light) * MAX_MAP_LIGHTS);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    return glm::normalize(quad[0].xyz + quad[1].xyz + quad[2].xyz + quad[3].xyz);
 }
 
-static void InitGLObjects(void)
+static qboolean printableChar( char c ) {
+	if ( ( c >= ' ' && c <= '~' ) || c == '\n' || c == '\r' || c == '\t' )
+		return qtrue;
+	else
+		return qfalse;
+}
+
+static std::string LoadStringFile(const char *path)
+{
+    FILE *fp;
+    std::string buf;
+
+    fp = SafeOpenRead(path);
+    buf.resize(FileLength(fp));
+    SafeRead(buf.data(), buf.size(), fp);
+    fclose(fp);
+
+    return buf;
+}
+
+void InitGLObjects(void)
 {
     GLuint vertid, fragid;
+    const char *str;
+    const std::string vs = LoadStringFile(va("%sbasic.glsl.vs", gameConfig->mEditorPath.c_str()));
+    const std::string fs = LoadStringFile(va("%sbasic.glsl.fs", gameConfig->mEditorPath.c_str()));
 
     Printf("[Window::InitGLObjects] Allocating OpenGL buffer objects...");
-
-    const char *vertShader =
-    "#version 330 core\n"
-    "\n"
-    "layout(location = 0) in vec3 a_Position;\n"
-    "layout(location = 1) in vec2 a_TexCoords;\n"
-    "layout(location = 2) in vec3 a_Color;\n"
-    "layout(location = 3) in float a_Alpha;\n"
-    "\n"
-    "uniform mat4 u_ViewProjection;\n"
-    "\n"
-    "out vec3 v_Position;\n"
-    "out vec2 v_TexCoords;\n"
-    "out vec3 v_Color;\n"
-    "out float v_Alpha;\n"
-    "\n"
-    "void main() {\n"
-    "   v_Position = a_Position;\n"
-    "   v_TexCoords = a_TexCoords;\n"
-    "   v_Color = a_Color;\n"
-    "   v_Alpha = a_Alpha;\n"
-    "   gl_Position = u_ViewProjection * vec4(a_Position, 1.0);\n"
-    "}\n";
-    const char *fragShader =
-    "#version 330 core\n"
-    "#define MAX_MAP_LIGHTS 256"
-    "\n"
-    "out vec4 a_Color;\n"
-    "\n"
-    "struct Light {\n"
-    "   float brightness;\n"
-    "   vec3 origin;\n"
-    "   vec3 color;\n"
-    "};\n"
-    "\n"
-    "uniform sampler2D u_SpriteSheet;\n"
-#if 0
-    "uniform float u_AmbientLight;\n"
-    "layout(std140) uniform u_Lights {\n"
-    "   Light lights[MAX_MAP_LIGHTS];\n"
-    "};\n"
-#endif
-    "\n"
-    "in vec3 v_Position;\n"
-    "in vec2 v_TexCoords;\n"
-    "in vec3 v_Color;\n"
-    "in float v_Alpha;\n"
-    "\n"
-#if 0
-    "vec4 applyLights() {\n"
-    "   vec4 color;\n"
-    "   for (int i = 0; i < u_numLights; i++) {\n"
-    "       color.rgb = color.rgb * 1.0 / distance(lights[i].origin, v_Position);\n"
-    "       color.rgb += lights[i].brightness;"
-    "   }\n"
-    "   color.a += u_AmbientLight;\n"
-    "   return color;\n"
-    "}\n"
-#endif
-    "vec4 toGreyscale(in vec4 color) {\n"
-    "   float avg = (color.r + color.g + color.b) / 3.0;\n"
-    "   return vec4(avg, avg, avg, 1.0);\n"
-    "}\n"
-    "vec4 colorize(in vec4 greyscale, in vec4 color) {\n"
-    "   return (greyscale * color);\n"
-    "}\n"
-    "\n"
-    "void main() {\n"
-    "   a_Color = texture(u_SpriteSheet, v_TexCoords);\n"
-    "}\n";
 
     glGenVertexArrays(1, &vaoId);
     glGenBuffers(1, &vboId);
@@ -308,14 +221,22 @@ static void InitGLObjects(void)
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)(offsetof(Vertex, color) + (sizeof(vec_t) * 3)));
 
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, worldPos));
+
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const void *)offsetof(Vertex, normal));
+
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
     Printf("[Window::InitGLObjects] Compiling shaders...");
 
-    vertid = GenShader(vertShader, GL_VERTEX_SHADER);
-    fragid = GenShader(fragShader, GL_FRAGMENT_SHADER);
+    str = vs.c_str();
+    vertid = GenShader(&str, 1, GL_VERTEX_SHADER);
+    str = fs.c_str();
+    fragid = GenShader(&str, 1, GL_FRAGMENT_SHADER);
 
     shaderId = glCreateProgram();
 
@@ -326,6 +247,8 @@ static void InitGLObjects(void)
 
     glUseProgram(shaderId);
 
+//    InitUBO();
+
     CheckProgram();
 
     Printf("[Window::InitGLObjects] Cleaning up shaders...");
@@ -333,9 +256,6 @@ static void InitGLObjects(void)
     glDeleteShader(vertid);
     glDeleteShader(fragid);
     glUseProgram(0);
-
-    CacheUniform("u_ViewProjection");
-    CacheUniform("u_SpriteSheet");
 
     Printf("[Window::InitGLObjects] Finished");
     
@@ -446,8 +366,6 @@ Window::Window(void)
 
         offset += 4;
     }
-
-    InitGLObjects();
 
     Cmd_AddCommand("clear", Clear_f);
     Cmd_AddCommand("cameraCenter", CameraCenter_f);
@@ -587,6 +505,44 @@ static void DrawElements(uint64_t numIndices)
     glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, NULL);
 }
 
+static GLint GetUniform(const std::string& name)
+{
+    const auto& it = uniformCache.find(name);
+    if (it != uniformCache.end()) {
+        if (it->second == -1) { // try again
+            GLint location = glGetUniformLocation(shaderId, name.c_str());
+            if (location == -1) {
+                return -1;
+            }
+            it->second = location;
+            return location;
+        }
+        else {
+            return it->second;
+        }
+    }
+
+    GLint location = glGetUniformLocation(shaderId, name.c_str());
+    if (location == -1) {
+        // save it so that we only get the warning once and it doesn't fill up the log with random shit
+        Printf("WARNING: failed to find uniform '%s'", name.c_str());
+    }
+    uniformCache.try_emplace(name, location);
+    return location;
+}
+
+void CMapData::CalcLighting(void)
+{
+    glUniform1i(GetUniform("u_numLights"), mLights.size());
+    glUniform1f(GetUniform("u_AmbientIntensity"), mAmbientIntensity);
+    glUniform3f(GetUniform("u_AmbientColor"), mAmbientColor.r, mAmbientColor.g, mAmbientColor.b);
+    for (uint32_t i = 0; i < mLights.size(); i++) {
+        glUniform3f(GetUniform(va("lights[%i].origin", i)), mLights[i].origin[0], mLights[i].origin[1], mLights[i].origin[2]);
+        glUniform4f(GetUniform(va("lights[%i].color", i)), mLights[i].color[0], mLights[i].color[1], mLights[i].color[2], mLights[i].color[3]);
+        glUniform1f(GetUniform(va("lights[%i].brightness", i)), mLights[i].brightness);
+    }
+}
+
 static void DrawMap(void)
 {
     uint32_t numVertices, numIndices;
@@ -598,20 +554,18 @@ static void DrawMap(void)
     numIndices = 0;
 
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
     glBindVertexArray(vaoId);
     glBindBuffer(GL_ARRAY_BUFFER, vboId);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
 
     glUseProgram(shaderId);
+    mapData->CalcLighting();
+
     glUniformMatrix4fv(GetUniform("u_ViewProjection"), 1, GL_FALSE, glm::value_ptr(gui->mViewProjection));
-
-//    glBindBuffer(GL_UNIFORM_BUFFER, uboId);
-//    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Light) * MAX_MAP_LIGHTS, lights);
-//    glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
     glUniform1i(GetUniform("u_SpriteSheet"), 0);
+
     glActiveTexture(GL_TEXTURE0);
     project->texData->Bind();
 
@@ -654,7 +608,9 @@ static void DrawMap(void)
                 if (editor->mode == MODE_TILE && tileMode.curX == x && tileMode.curY == y) {
                     v[i].color[3] = 0.0f;
                 }
+                v[i].worldPos = { x, y };
             }
+            CalcNormal(v);
             v += 4;
             numVertices += 4;
             numIndices += 6;

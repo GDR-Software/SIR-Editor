@@ -35,6 +35,7 @@ int main(int argc, char **argv)
 
     editor->ReloadFileCache();
     gameConfig->LoadMobList();
+    InitGLObjects();
 
     // if we're given something from the command line, load it up
     if (argv[1] && N_stricmp(GetExtension(argv[1]), "proj")) {

@@ -188,6 +188,19 @@ inline constexpr const StringToInt_t texture_filters_alt[] = {
     {3, "GL_LINEAR  | GL_NEAREST | (Trilinear)"}
 };
 
+typedef enum : uint32_t {
+    DIR_NORTH = 0,
+    DIR_NORTH_EAST,
+    DIR_EAST,
+    DIR_SOUTH_EAST,
+    DIR_SOUTH,
+    DIR_SOUTH_WEST,
+    DIR_WEST,
+    DIR_NORTH_WEST,
+    
+    NUMDIRS
+} dirtype_t;
+
 
 /*
 All the random shit I pulled from GtkRadiant into this project

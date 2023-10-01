@@ -102,7 +102,7 @@ typedef struct {
 
 #define MAX_MAP_SPAWNS 1024
 #define MAX_MAP_CHECKPOINTS 256
-#define MAX_MAP_LIGHTS 1024
+#define MAX_MAP_LIGHTS 256
 
 #define MAX_MAP_WIDTH 1024
 #define MAX_MAP_HEIGHT 1024
@@ -121,12 +121,12 @@ typedef struct {
 typedef struct {
     float brightness;
     float origin[3];
-    byte color[4];
+    vec4_t color;
 } maplight_t;
 
 typedef struct {
     float texcoords[4][2];
-    uint32_t sides[5]; // for physics
+    byte sides[5]; // for physics
     vec4_t color;
     uvec3_t pos;
     int32_t index; // tileset texture index, -1 if not bound

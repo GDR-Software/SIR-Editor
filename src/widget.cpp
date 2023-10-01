@@ -154,11 +154,11 @@ static INLINE void GET_VAR_MENU(bool& change, T& value, const U& set, const char
 }
 
 typedef struct {
-    int x;
-    int y;
+    float x;
+    float y;
     int elevation;
     float brightness;
-    vec3_t color;
+    glm::vec4 color;
     bool xChanged;
     bool yChanged;
     bool brightnessChanged;
@@ -167,6 +167,7 @@ typedef struct {
 
 typedef struct {
     int color[4];
+    int sides[4];
     int x;
     int y;
     int tileIndex;
@@ -232,6 +233,11 @@ typedef struct {
     int numLights;
     int editingSpawnIndex;
     int editingCheckpointIndex;
+    int editingLightIndex;
+    float ambientIntensity;
+    float ambientColor[3];
+    bool ambientIntensityChanged;
+    bool ambientColorChanged;
     bool nameChanged;
     bool pathChanged;
     bool widthChanged;
@@ -242,6 +248,7 @@ typedef struct {
     bool changed;
     bool editingSpawn;
     bool editingCheckpoint;
+    bool editingLight;
     bool open;
 } mapGlobals_t;
 
@@ -298,6 +305,36 @@ static INLINE void Update_Config(void)
 static INLINE void Update_Graphics(void)
 {
     graphicsGlobals_t *g = &globals->graphics;
+    const std::shared_ptr<CTexture>& texture = project->texData;
+
+    if (g->textureFiltersChanged) {
+        texture->Bind();
+        GLenum min, mag;
+
+        // const? ... whatever
+        switch (g->textureFilters) {
+        case 0: // Nearest
+            min = GL_NEAREST;
+            mag = GL_NEAREST;
+            break;
+        case 1: // Linear
+            min = GL_LINEAR;
+            mag = GL_LINEAR;
+            break;
+        case 2: // Bilinear
+            min = GL_NEAREST;
+            mag = GL_LINEAR;
+            break;
+        case 3: // Trilinear
+            min = GL_LINEAR;
+            mag = GL_NEAREST;
+            break;
+        };
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag);
+
+        texture->Unbind();
+    }
 
     UPDATE_VAR(gameConfig->mTextureDetail, g->textureDetails, g->textureDetailsChanged);
     UPDATE_VAR(gameConfig->mTextureFiltering, g->textureFilters, g->textureFiltersChanged);
@@ -320,6 +357,12 @@ static INLINE void Update_Map(void)
     UPDATE_VAR(mapData->mHeight, g->height, g->heightChanged);
     UPDATE_VAR(mapData->mCheckpoints, g->numCheckpoints, g->checkpointsChanged);
     UPDATE_VAR(mapData->mSpawns, g->numSpawns, g->spawnsChanged);
+    UPDATE_VAR(mapData->mLights, g->numLights, g->lightsChanged);
+    UPDATE_VAR(mapData->mAmbientIntensity, g->ambientIntensity, g->ambientIntensityChanged);
+    if (g->ambientColorChanged) {
+        memcpy(&mapData->mAmbientColor[0], g->ambientColor, sizeof(vec3_t));
+        g->ambientColorChanged = false;
+    }
 }
 
 static INLINE void Update_Tileset(void)
@@ -547,7 +590,9 @@ static void TileMode(void)
             const ImVec2 buttonSize = { 86, 48 };
 
             ImGui::TableNextColumn();
-            ImGui::Button("North West", buttonSize);
+            if (ImGui::Button("North West", buttonSize)) {
+                g->sides[DIR_NORTH_WEST] = true;
+            }
             ImGui::TableNextColumn();
             ImGui::Button("North", buttonSize);
             ImGui::TableNextColumn();
@@ -677,6 +722,62 @@ static void Edit_Spawn(void)
     globals->map.editingSpawn = open;
 }
 
+static void Edit_Lighting(void)
+{
+    lightGlobals_t *g = &globals->light;
+    maplight_t *l;
+    bool open;
+    const int index = globals->map.editingLightIndex;
+
+    if (!globals->map.editingLight)
+        return;
+    
+    l = &mapData->mLights[index];
+
+    CHECK_VAR(g->x, l->origin[0], !g->xChanged);
+    CHECK_VAR(g->y, l->origin[1], !g->yChanged);
+    CHECK_VAR(g->brightness, l->brightness, !g->brightnessChanged);
+    if (!g->colorChanged) {
+        memcpy(&g->color[0], l->color, sizeof(vec4_t));
+    }
+
+    open = true;
+    if (ImGui::Begin("Edit Light", &open)) {
+        GET_VAR(g->xChanged, "x", g->x);
+        GET_VAR(g->yChanged, "y", g->y);
+        if (ImGui::SliderFloat("brightness", &g->brightness, 0, 128)) {
+            g->brightnessChanged = true;
+        }
+        if (ImGui::SliderFloat("R", &g->color[0], 0, 1)) {
+            g->colorChanged = true;
+        }
+        if (ImGui::SliderFloat("G", &g->color[1], 0, 1)) {
+            g->colorChanged = true;
+        }
+        if (ImGui::SliderFloat("B", &g->color[2], 0, 1)) {
+            g->colorChanged = true;
+        }
+        if (ImGui::SliderFloat("A", &g->color[3], 0, 1)) {
+            g->colorChanged = true;
+        }
+
+        if (ImGui::Button("Save Light")) {
+            UPDATE_VAR(l->origin[0], g->x, g->xChanged);
+            UPDATE_VAR(l->origin[1], g->y, g->yChanged);
+            UPDATE_VAR(l->brightness, g->brightness, g->brightnessChanged);
+            if (g->colorChanged) {
+                memcpy(l->color, &g->color[0], sizeof(vec4_t));
+                g->colorChanged = false;
+            }
+
+            open = false;
+        }
+    }
+    ImGui::End();
+
+    globals->map.editingLight = open;
+}
+
 static void Edit_Checkpoint(void)
 {
     checkpointGlobals_t *g = &globals->checkpoint;
@@ -755,7 +856,6 @@ static void Edit_Tileset(void)
                 Update_Tileset();
 
                 g->changed = false;
-                g->open = false;
             }
         }
     }
@@ -774,19 +874,45 @@ static void Edit_Map(void)
         CHECK_VAR(g->name, sizeof(g->name), mapData->mName, !g->nameChanged && !g->changed);
         CHECK_VAR(g->numCheckpoints, mapData->mCheckpoints.size(), !g->checkpointsChanged && !g->changed);
         CHECK_VAR(g->numSpawns, mapData->mSpawns.size(), !g->spawnsChanged && !g->changed);
+        CHECK_VAR(g->numLights, mapData->mLights.size(), !g->lightsChanged && !g->changed);
         CHECK_VAR(g->width, mapData->mWidth, !g->widthChanged && !g->changed);
         CHECK_VAR(g->height, mapData->mHeight, !g->heightChanged && !g->changed);
+        CHECK_VAR(g->ambientIntensity, mapData->mAmbientIntensity, !g->ambientIntensityChanged && !g->changed);
+        if (!g->ambientColorChanged && !g->changed) {
+            memcpy(g->ambientColor, &mapData->mAmbientColor[0], sizeof(vec3_t));
+        }
 
         GET_VAR(g->nameChanged, g->changed, "Name", g->name, sizeof(g->name) - 1);
         GET_VAR(g->widthChanged, g->changed, "Width", g->width);
         GET_VAR(g->heightChanged, g->changed, "Height", g->height);
         GET_VAR(g->checkpointsChanged, g->changed, "Checkpoint Count", g->numCheckpoints);
         GET_VAR(g->spawnsChanged, g->changed, "Spawn Count", g->numSpawns);
+        GET_VAR(g->lightsChanged, g->changed, "Light Count", g->numLights);
+        GET_VAR(g->ambientIntensityChanged, g->changed, "Ambient Intensity", g->ambientIntensity);
+
+        if (ImGui::SliderFloat("Ambient Itensity", &g->ambientIntensity, 0, 1)) {
+            g->changed = true;
+            g->ambientIntensityChanged = true;
+        }
+
+        if (ImGui::SliderFloat("Ambient Red", &g->ambientColor[0], 0, 1)) {
+            g->changed = true;
+            g->ambientColorChanged = true;
+        }
+        if (ImGui::SliderFloat("Ambient Green", &g->ambientColor[1], 0, 1)) {
+            g->changed = true;
+            g->ambientColorChanged = true;
+        }
+        if (ImGui::SliderFloat("Ambient Blue", &g->ambientColor[2], 0, 1)) {
+            g->changed = true;
+            g->ambientColorChanged = true;
+        }
 
         g->width = clamp(g->width, 16, MAX_MAP_WIDTH);
         g->height = clamp(g->height, 16, MAX_MAP_HEIGHT);
         g->numSpawns = clamp(g->numSpawns, 1, MAX_MAP_SPAWNS);
         g->numCheckpoints = clamp(g->numCheckpoints, 0, MAX_MAP_CHECKPOINTS);
+        g->numLights = clamp(g->numLights, 0, MAX_MAP_LIGHTS);
 
         if (ImGui::BeginMenu("Edit Checkpoint")) {
             if (!mapData->mCheckpoints.size()) {
@@ -829,13 +955,32 @@ static void Edit_Map(void)
             }
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Edit Lights")) {
+            if (!mapData->mLights.size()) {
+                ImGui::MenuItem("No Lights");
+            }
+            else {
+                char buf[1024];
+                for (uint64_t i = 0; i < mapData->mLights.size(); i++) {
+                    snprintf(buf, sizeof(buf),
+                        "-------- light %lu --------\n"
+                        "coordinates: [%f, %f]\n"
+                        "brightness: %f\n"
+                    , i, mapData->mLights[i].origin[0], mapData->mLights[i].origin[1], mapData->mLights[i].brightness);
+                    if (ItemWithTooltip(va("Light #%lu", i), buf)) {
+                        g->editingLightIndex = i;
+                        g->editingLight = true;
+                    }
+                }
+            }
+            ImGui::EndMenu();
+        }
 
         if (g->changed) {
             if (ImGui::Button("Confirm Map")) {
                 Update_Map();
                 g->changed = false;
                 mapData->mModified = true;
-                g->open = false;
             }
         }
     }
@@ -909,6 +1054,7 @@ void Widgets_Draw(void)
 
     Edit_Tileset();
     Edit_Map();
+    Edit_Lighting();
     Edit_Checkpoint();
     Edit_Spawn();
     View_Tileset();

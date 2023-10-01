@@ -18,6 +18,8 @@ public:
     std::vector<mapcheckpoint_t> mCheckpoints;
     std::vector<CEntity> mEntities;
 
+    float mAmbientIntensity;
+    glm::vec3 mAmbientColor;
     uint32_t mWidth;
     uint32_t mHeight;
 
@@ -32,7 +34,7 @@ public:
     void Clear(void);
     void SetMapSize(uint32_t width, uint32_t height);
     void CalcDrawData(void);
-    void RedoDrawData(void);
+    void CalcLighting(void);
 
     boost::shared_mutex resourceLock;
 

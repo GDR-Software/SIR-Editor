@@ -8,9 +8,11 @@
 
 struct Vertex
 {
-    glm::vec3 xyz;
-    glm::vec2 uv;
     glm::vec4 color;
+    glm::vec3 xyz;
+    glm::vec3 normal;
+    glm::vec2 uv;
+    glm::vec2 worldPos;
 };
 
 class Window
@@ -80,5 +82,7 @@ INLINE glm::vec3 ScreenToWorldSpace(int mousex, int mousey)
 
     return glm::vec3(worldPos);
 }
+
+void InitGLObjects(void);
 
 #endif
