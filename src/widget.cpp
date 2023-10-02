@@ -236,6 +236,7 @@ typedef struct {
     int editingLightIndex;
     float ambientIntensity;
     float ambientColor[3];
+    int ambienceType;
     bool ambientIntensityChanged;
     bool ambientColorChanged;
     bool nameChanged;
@@ -249,6 +250,7 @@ typedef struct {
     bool editingSpawn;
     bool editingCheckpoint;
     bool editingLight;
+    bool ambienceTypeChanged;
     bool open;
 } mapGlobals_t;
 
@@ -359,6 +361,7 @@ static INLINE void Update_Map(void)
     UPDATE_VAR(mapData->mSpawns, g->numSpawns, g->spawnsChanged);
     UPDATE_VAR(mapData->mLights, g->numLights, g->lightsChanged);
     UPDATE_VAR(mapData->mAmbientIntensity, g->ambientIntensity, g->ambientIntensityChanged);
+    UPDATE_VAR(mapData->mDarkAmbience, g->ambienceType, g->ambienceTypeChanged);
     if (g->ambientColorChanged) {
         memcpy(&mapData->mAmbientColor[0], g->ambientColor, sizeof(vec3_t));
         g->ambientColorChanged = false;
@@ -745,7 +748,8 @@ static void Edit_Lighting(void)
     if (ImGui::Begin("Edit Light", &open)) {
         GET_VAR(g->xChanged, "x", g->x);
         GET_VAR(g->yChanged, "y", g->y);
-        if (ImGui::SliderFloat("brightness", &g->brightness, 0, 128)) {
+        
+        if (ImGui::SliderFloat("brightness", &g->brightness, 0, 1)) {
             g->brightnessChanged = true;
         }
         if (ImGui::SliderFloat("R", &g->color[0], 0, 1)) {
@@ -877,6 +881,7 @@ static void Edit_Map(void)
         CHECK_VAR(g->numLights, mapData->mLights.size(), !g->lightsChanged && !g->changed);
         CHECK_VAR(g->width, mapData->mWidth, !g->widthChanged && !g->changed);
         CHECK_VAR(g->height, mapData->mHeight, !g->heightChanged && !g->changed);
+        CHECK_VAR(g->ambienceType, mapData->mDarkAmbience, !g->ambienceTypeChanged && !g->changed);
         CHECK_VAR(g->ambientIntensity, mapData->mAmbientIntensity, !g->ambientIntensityChanged && !g->changed);
         if (!g->ambientColorChanged && !g->changed) {
             memcpy(g->ambientColor, &mapData->mAmbientColor[0], sizeof(vec3_t));
@@ -888,7 +893,23 @@ static void Edit_Map(void)
         GET_VAR(g->checkpointsChanged, g->changed, "Checkpoint Count", g->numCheckpoints);
         GET_VAR(g->spawnsChanged, g->changed, "Spawn Count", g->numSpawns);
         GET_VAR(g->lightsChanged, g->changed, "Light Count", g->numLights);
+
+        ImGui::SeparatorText("Ambient Lighting");
         GET_VAR(g->ambientIntensityChanged, g->changed, "Ambient Intensity", g->ambientIntensity);
+        if (ImGui::BeginMenu("Ambience Type")) {
+            if (ItemWithTooltip("Dark Ambience", "the smaller the intensity, the darker the tiles will be")) {
+                g->ambienceType = 1;
+                g->changed = true;
+                g->ambienceTypeChanged = true;
+            }
+            if (ItemWithTooltip("Light Ambience", "the greater the intensity, the lighter the tiles will be")) {
+                g->ambienceType = 0;
+                g->changed = true;
+                g->ambienceTypeChanged = true;
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::Text("Ambience Type: %s", g->ambienceType == 1 ? "Dark" : "Light");
 
         if (ImGui::SliderFloat("Ambient Itensity", &g->ambientIntensity, 0, 1)) {
             g->changed = true;

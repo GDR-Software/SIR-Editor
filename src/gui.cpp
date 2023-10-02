@@ -531,18 +531,6 @@ static GLint GetUniform(const std::string& name)
     return location;
 }
 
-void CMapData::CalcLighting(void)
-{
-    glUniform1i(GetUniform("u_numLights"), mLights.size());
-    glUniform1f(GetUniform("u_AmbientIntensity"), mAmbientIntensity);
-    glUniform3f(GetUniform("u_AmbientColor"), mAmbientColor.r, mAmbientColor.g, mAmbientColor.b);
-    for (uint32_t i = 0; i < mLights.size(); i++) {
-        glUniform3f(GetUniform(va("lights[%i].origin", i)), mLights[i].origin[0], mLights[i].origin[1], mLights[i].origin[2]);
-        glUniform4f(GetUniform(va("lights[%i].color", i)), mLights[i].color[0], mLights[i].color[1], mLights[i].color[2], mLights[i].color[3]);
-        glUniform1f(GetUniform(va("lights[%i].brightness", i)), mLights[i].brightness);
-    }
-}
-
 static void DrawMap(void)
 {
     uint32_t numVertices, numIndices;
@@ -554,16 +542,23 @@ static void DrawMap(void)
     numIndices = 0;
 
     glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glBindVertexArray(vaoId);
     glBindBuffer(GL_ARRAY_BUFFER, vboId);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, iboId);
 
     glUseProgram(shaderId);
-    mapData->CalcLighting();
-
+    glUniform1i(GetUniform("u_numLights"), mapData->mLights.size());
+    for (uint32_t i = 0; i < mapData->mLights.size(); ++i) {
+        glUniform1f(GetUniform(va("lights[%i].brightness", i)), mapData->mLights[i].brightness);
+        glUniform2f(GetUniform(va("lights[%i].origin", i)), mapData->mLights[i].origin[0], mapData->mLights[i].origin[1]);
+        glUniform3f(GetUniform(va("lights[%i].color", i)), mapData->mLights[i].color[0], mapData->mLights[i].color[1],
+            mapData->mLights[i].color[2]);
+    }
     glUniformMatrix4fv(GetUniform("u_ViewProjection"), 1, GL_FALSE, glm::value_ptr(gui->mViewProjection));
+    glUniform3f(GetUniform("u_AmbientColor"), mapData->mAmbientColor.r, mapData->mAmbientColor.g, mapData->mAmbientColor.b);
+    glUniform1f(GetUniform("u_AmbientIntensity"), mapData->mAmbientIntensity);
     glUniform1i(GetUniform("u_SpriteSheet"), 0);
 
     glActiveTexture(GL_TEXTURE0);
@@ -579,6 +574,7 @@ static void DrawMap(void)
                 glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
                 glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, NULL);
                 v = gui->mVertices;
+                mapData->CalcLighting(v, FRAME_VERTICES);
                 numVertices = 0;
                 numIndices = 0;
             }
@@ -610,7 +606,7 @@ static void DrawMap(void)
                 }
                 v[i].worldPos = { x, y };
             }
-            CalcNormal(v);
+            CalcVertexNormals(v);
             v += 4;
             numVertices += 4;
             numIndices += 6;

@@ -118,10 +118,17 @@ typedef struct {
 
 #define NUMLUMPS 5
 
+typedef enum {
+    light_point = 0,
+    light_spotlight,
+    light_area
+} lighttype_t;
+
 typedef struct {
-    float brightness;
-    float origin[3];
     vec4_t color;
+    float origin[3];
+    float brightness;
+    lighttype_t type;
 } maplight_t;
 
 typedef struct {

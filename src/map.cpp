@@ -96,7 +96,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 COM_ParseError("missing parameter for spawn entity type");
                 return false;
             }
-            tmpData->mSpawns.back().entitytype = static_cast<uint32_t>(atoi(tok));
+            tmpData->mSpawns.back().entitytype = (uint32_t)atoi(tok);
         }
         //
         // tileCountX <count>
@@ -107,7 +107,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 COM_ParseError("missing parameter for tileset tileCountX");
                 return false;
             }
-            tileset->tileCountX = static_cast<uint32_t>(atoi(tok));
+            tileset->tileCountX = (uint32_t)atoi(tok);
         }
         //
         // tileCountY <count>
@@ -118,7 +118,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 COM_ParseError("missing parameter for tileset tileCountY");
                 return false;
             }
-            tileset->tileCountY = static_cast<uint32_t>(atoi(tok));
+            tileset->tileCountY = (uint32_t)atoi(tok);
         }
         //
         // numTiles <number>
@@ -140,7 +140,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 COM_ParseError("missing parameter for tileset tileWidth");
                 return false;
             }
-            tileset->tileWidth = static_cast<uint32_t>(atoi(tok));
+            tileset->tileWidth = (uint32_t)atoi(tok);
         }
         //
         // texture <path>
@@ -162,7 +162,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 COM_ParseError("missing parameter for tileset tileHeight");
                 return false;
             }
-            tileset->tileHeight = static_cast<uint32_t>(atoi(tok));
+            tileset->tileHeight = (uint32_t)atoi(tok);
         }
         //
         // id <entityid>
@@ -177,7 +177,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 COM_ParseError("missing parameter for spawn entity id");
                 return false;
             }
-            tmpData->mSpawns.back().entityid = static_cast<uint32_t>(atoi(tok));
+            tmpData->mSpawns.back().entityid = (uint32_t)atoi(tok);
             if (!editor->ValidateEntityId(tmpData->mSpawns.back().entityid)) {
                 COM_ParseError("invalid entity id found in map spawn: %u", tmpData->mSpawns.back().entityid);
                 return false;
@@ -196,7 +196,22 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 COM_ParseError("missing parameter for tile flags");
                 return false;
             }
-            tmpData->mTiles.back().flags = static_cast<uint32_t>(atoi(tok));
+            tmpData->mTiles.back().flags = (uint32_t)ParseHex(tok);
+        }
+        //
+        // sides <sides...>
+        //
+        else if (!N_stricmp(tok, "sides")) {
+            int sides[5];
+            if (!Parse1DMatrix(text, 5, (float *)sides)) {
+                COM_ParseError("failed to parse sides for map tile");
+                return false;
+            }
+            tmpData->mTiles.back().sides[0] = sides[0];
+            tmpData->mTiles.back().sides[1] = sides[1];
+            tmpData->mTiles.back().sides[2] = sides[2];
+            tmpData->mTiles.back().sides[3] = sides[3];
+            tmpData->mTiles.back().sides[4] = sides[4];
         }
         //
         // texcoords <texcoords...>
@@ -207,6 +222,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 COM_ParseError("failed to parse texture coordinates for map tile");
                 return false;
             }
+            memcpy(tmpData->mTiles.back().texcoords, coords, sizeof(coords));
         }
         //
         // pos <x y elevation>
@@ -241,7 +257,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 COM_ParseError("missing parameter for pos.elevation");
                 return false;
             }
-            xyz[2] = static_cast<uint32_t>(atoi(tok));
+            xyz[2] = (uint32_t)atoi(tok);
         }
         //
         // brightness <value>
@@ -382,7 +398,7 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
                 COM_ParseError("missing parameter for map width");
                 return false;
             }
-            tmpData->mWidth = static_cast<uint32_t>(atoi(tok));
+            tmpData->mWidth = (uint32_t)atoi(tok);
         }
         else if (!N_stricmp(tok, "height")) {
             tok = COM_ParseExt(text, qfalse);
@@ -390,7 +406,7 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
                 COM_ParseError("missing parameter for map height");
                 return false;
             }
-            tmpData->mHeight = static_cast<uint32_t>(atoi(tok));
+            tmpData->mHeight = (uint32_t)atoi(tok);
         }
         else if (!N_stricmp(tok, "ambientIntensity")) {
             tok = COM_ParseExt(text, qfalse);
@@ -404,6 +420,22 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
             if (!Parse1DMatrix(text, 3, &mapData->mAmbientColor[0])) {
                 COM_ParseError("failed to parse map ambient color");
                 return false;
+            }
+        }
+        else if (!N_stricmp(tok, "ambientType")) {
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for map ambientType");
+                return false;
+            }
+            if (!N_stricmp(tok, "dark")) {
+                tmpData->mDarkAmbience = true;
+            }
+            else if (!N_stricmp(tok, "light")) {
+                tmpData->mDarkAmbience = false;
+            }
+            else {
+                COM_ParseError("invalid parameter for map ambientType '%s'", tok);
             }
         }
         else if (!N_stricmp(tok, "numCheckpoints")) {
@@ -556,24 +588,25 @@ static void SaveTiles(IDataStream *file)
 {
     char buf[1024];
 
-    for (const auto& it : mapData->mTiles) {
+    Printf("Saving %lu tiles...", mapData->mTiles.size());
+    for (uint64_t i = 0; i < mapData->mTiles.size(); i++) {
+        const auto& it = mapData->mTiles[i];
         snprintf(buf, sizeof(buf),
             "{\n"
             "classname map_tile\n"
-            "pos %lu\n"
             "texIndex %i\n"
+            "flags %x\n"
+            "sides ( %i %i %i %i %i )"
             "texcoords ( ( %f %f ) ( %f %f ) ( %f %f ) ( %f %f ) )\n"
-            "sides %hu %hu %hu %hu %hu\n"
-            "flags %i\n"
             "}\n"
-        , (uint64_t)it.pos[1] * mapData->mWidth + it.pos[0],
-        it.index,
+        , it.index,
+        it.flags,
+        (int)it.sides[0], (int)it.sides[1], (int)it.sides[2], (int)it.sides[3], (int)it.sides[4],
         it.texcoords[0][0], it.texcoords[0][1],
         it.texcoords[1][0], it.texcoords[1][1],
         it.texcoords[2][0], it.texcoords[2][1],
-        it.texcoords[3][0], it.texcoords[3][1],
-        it.sides[0], it.sides[1], it.sides[2], it.sides[3], it.sides[4],
-        it.flags);
+        it.texcoords[3][0], it.texcoords[3][1]);
+
         file->Write(buf, strlen(buf));
     }
 }
@@ -607,6 +640,7 @@ void Map_Save(const char *filename)
             "numLights %lu\n"
             "numEntities %lu\n"
             "numTiles %lu\n"
+            "ambientType %s\n"
             "ambientIntensity %f\n"
             "ambientColor ( %f %f %f )\n"
             "{\n"
@@ -620,7 +654,7 @@ void Map_Save(const char *filename)
             "numTiles %lu\n"
             "}\n"
         , mapData->mName.c_str(), mapData->mWidth, mapData->mHeight, mapData->mSpawns.size(), mapData->mCheckpoints.size(),
-        mapData->mLights.size(), mapData->mEntities.size(), mapData->mTiles.size(), mapData->mAmbientIntensity,
+        mapData->mLights.size(), mapData->mEntities.size(), mapData->mTiles.size(), mapData->mDarkAmbience ? "dark" : "light", mapData->mAmbientIntensity,
         mapData->mAmbientColor[0], mapData->mAmbientColor[1], mapData->mAmbientColor[2],
         tileset->texData->mName.c_str(), tileset->tileWidth, tileset->tileHeight, tileset->tileCountX, tileset->tileCountY, tileset->tiles.size());
         file.Write(buf, strlen(buf));
@@ -721,6 +755,107 @@ CMapData::~CMapData()
 }
 
 
+static void ConvertCoords(Vertex *vertices, const glm::vec2& pos)
+{
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f));
+    glm::mat4 mvp = gui->mViewProjection * model;
+
+    constexpr glm::vec4 positions[4] = {
+        { 0.5f,  0.5f, 0.0f, 1.0f},
+        { 0.5f, -0.5f, 0.0f, 1.0f},
+        {-0.5f, -0.5f, 0.0f, 1.0f},
+        {-0.5f,  0.5f, 0.0f, 1.0f},
+    };
+
+    for (uint32_t i = 0; i < arraylen(positions); i++) {
+        vertices[i].xyz = mvp * positions[i];
+    }
+}
+
+static void LightingAtVertex(vec3_t origin, vec3_t normal, vec4_t color, vec3_t ambient, float ambientIntensity)
+{
+    vec3_t ambience, dir;
+    std::vector<maplight_t>::iterator light;
+    float dist;
+    float add;
+    float angle;
+    float diffuse;
+
+    VectorCopy(ambience, ambient);
+    VectorScale(ambience, ambientIntensity, ambience);
+
+    // apply all lights
+    for (light = mapData->mLights.begin(); light != mapData->mLights.end(); light++) {
+        #if 0
+        if (DotProduct(light->origin, normal) - DotProduct(normal, origin) < 0) {
+            continue;
+        }
+        #endif
+        
+        // calculate the amount of lighting at this vertex
+ //       if (light->type == light_point) {
+            VectorSubtract(light->origin, origin, dir);
+            dist = VectorNormalize(dir, dir);
+            
+            // clamp the distance to prevent super hot spots
+            if (dist < 4) {
+                dist = 4;
+            }
+            angle = DotProduct(normal, dir);
+            add = light->brightness / ( dist * dist ) * angle;
+ //       }
+ //       else if (light->type == light_spotlight) {
+  //      }
+        
+        if (add <= 1.0) {
+            continue;
+        }
+        diffuse = 0.0;
+        if (dist <= light->brightness) {
+            diffuse = 1.0 - fabs(dist / light->brightness);
+        }
+
+        // add the result
+        color[0] += add * light->color[0] * diffuse;
+        color[1] += add * light->color[1] * diffuse;
+        color[2] += add * light->color[2] * diffuse;
+    }
+}
+
+/*
+CalcVertexNormals: calculates normals for a single quad
+*/
+void CalcVertexNormals(Vertex *quad)
+{
+    vec3_t vtx1, vtx2;
+
+    VectorSubtract(quad[1].xyz, quad[0].xyz, vtx1);
+    VectorSubtract(quad[2].xyz, quad[0].xyz, vtx2);
+    CrossProduct(vtx1, vtx2, &quad[0].normal[0]);
+
+    VectorSubtract(quad[2].xyz, quad[1].xyz, vtx1);
+    VectorSubtract(quad[3].xyz, quad[1].xyz, vtx2);
+    CrossProduct(vtx1, vtx2, &quad[1].normal[0]);
+
+    VectorSubtract(quad[0].xyz, quad[2].xyz, vtx1);
+    VectorSubtract(quad[3].xyz, quad[2].xyz, vtx2);
+    CrossProduct(vtx1, vtx2, &quad[2].normal[0]);
+
+    VectorSubtract(quad[1].xyz, quad[3].xyz, vtx1);
+    VectorSubtract(quad[2].xyz, quad[3].xyz, vtx2);
+    CrossProduct(vtx1, vtx2, &quad[3].normal[0]);
+}
+
+void CMapData::CalcLighting(Vertex *vertices, uint32_t numVertices)
+{
+    Vertex *vt;
+
+    for (uint32_t i = 0; i < numVertices; i++) {
+        vt = &vertices[i];
+        LightingAtVertex(&vt->xyz[0], &vt->normal[0], &vt->color[0], &mapData->mAmbientColor[0], mapData->mAmbientIntensity);
+    }
+}
+
 static void SetTileCheckpoints(void)
 {
     const uint32_t width = mapData->mWidth;
@@ -793,6 +928,7 @@ const CMapData& CMapData::operator=(const CMapData& other)
     mName = other.mName;
     mAmbientIntensity = other.mAmbientIntensity;
     mAmbientColor = other.mAmbientColor;
+    mDarkAmbience = other.mDarkAmbience;
 
     {
         boost::thread_group group;
@@ -885,6 +1021,7 @@ void CMapData::SetMapSize(uint32_t width, uint32_t height)
 
 void CMapData::Clear(void)
 {
+    mDarkAmbience = true;
     mWidth = 16;
     mHeight = 16;
     mAmbientIntensity = 0.0f;

@@ -18,6 +18,7 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl2.h"
+#include <math.h>
 
 #include <boost/thread.hpp>
 
@@ -276,6 +277,74 @@ INLINE void operator delete[] (void* ptr, std::align_val_t alignment, const std:
 INLINE void operator delete[] (void* ptr, size_t, std::align_val_t alignment) noexcept
 { ::operator delete[](ptr, alignment); }
 #endif
+
+#define DotProduct(x,y) (x[0]*y[0]+x[1]*y[1]+x[2]*y[2])
+#define VectorSubtract(a,b,dst) {dst[0]=a[0]-b[0];dst[1]=a[1]-b[1];dst[2]=a[2]-b[2];}
+#define VectorAdd(a,b,c) {c[0]=a[0]+b[0];c[1]=a[1]+b[1];c[2]=a[2]+b[2];}
+#define VectorCopy(dst,src) {dst[0]=src[0];dst[1]=src[1];dst[2]=src[2];}
+#define VectorScale(a,scale,dst) {dst[0]=scale*a[0];dst[1]=scale*a[1];dst[2]=scale*a[2];}
+#define VectorClear(x) {x[0] = x[1] = x[2] = 0;}
+#define	VectorNegate(x) {x[0]=-x[0];x[1]=-x[1];x[2]=-x[2];}
+
+INLINE vec_t VectorNormalize( const vec3_t in, vec3_t out ) {
+	vec_t	length, ilength;
+
+	length = sqrt (in[0]*in[0] + in[1]*in[1] + in[2]*in[2]);
+	if (length == 0)
+	{
+		VectorClear (out);
+		return 0;
+	}
+
+	ilength = 1.0/length;
+	out[0] = in[0]*ilength;
+	out[1] = in[1]*ilength;
+	out[2] = in[2]*ilength;
+
+	return length;
+}
+
+INLINE vec_t ColorNormalize( const vec3_t in, vec3_t out ) {
+	float	max, scale;
+
+	max = in[0];
+	if (in[1] > max)
+		max = in[1];
+	if (in[2] > max)
+		max = in[2];
+
+	if (max == 0) {
+		out[0] = out[1] = out[2] = 1.0;
+		return 0;
+	}
+
+	scale = 1.0 / max;
+
+	VectorScale (in, scale, out);
+
+	return max;
+}
+
+INLINE void VectorInverse (vec3_t v)
+{
+	v[0] = -v[0];
+	v[1] = -v[1];
+	v[2] = -v[2];
+}
+
+INLINE void VectorMA (vec3_t va, float scale, vec3_t vb, vec3_t vc)
+{
+	vc[0] = va[0] + scale*vb[0];
+	vc[1] = va[1] + scale*vb[1];
+	vc[2] = va[2] + scale*vb[2];
+}
+
+INLINE void CrossProduct (vec3_t v1, vec3_t v2, vec3_t cross)
+{
+	cross[0] = v1[1]*v2[2] - v1[2]*v2[1];
+	cross[1] = v1[2]*v2[0] - v1[0]*v2[2];
+	cross[2] = v1[0]*v2[1] - v1[1]*v2[0];
+}
 
 extern int parm_compression;
 extern int myargc;
