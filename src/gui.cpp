@@ -95,10 +95,6 @@ static GLuint vaoId, vboId, iboId;
 static GLuint shaderId;
 static std::unordered_map<std::string, GLint> uniformCache;
 
-#define FRAME_QUADS 0x8000
-#define FRAME_VERTICES (FRAME_QUADS*4)
-#define FRAME_INDICES (FRAME_QUADS*6)
-
 static void MakeViewMatrix(void)
 {
     glm::mat4 transpose = glm::translate(glm::mat4(1.0f), gui->mCameraPos)
@@ -391,21 +387,29 @@ Window::~Window()
     SDL_DestroyWindow(mWindow);
 }
 
-static void ConvertCoords(Vertex *vertices, const glm::vec2& pos)
+static glm::vec3 ConvertCoords(Vertex *vertices, const glm::vec2& pos, float height, float width)
 {
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f));
-    glm::mat4 mvp = gui->mViewProjection * model;
+    const glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f));
+    const glm::mat4 mvp = gui->mViewProjection * model;
+    glm::vec3 total = glm::vec3(0.0f);
 
-    constexpr glm::vec4 positions[4] = {
-        { 0.5f,  0.5f, 0.0f, 1.0f},
-        { 0.5f, -0.5f, 0.0f, 1.0f},
-        {-0.5f, -0.5f, 0.0f, 1.0f},
-        {-0.5f,  0.5f, 0.0f, 1.0f},
+    const glm::vec4 positions[4] = {
+        { width,  height, 0.0f, 1.0f},
+        { width, -height, 0.0f, 1.0f},
+        {-width, -height, 0.0f, 1.0f},
+        {-width,  height, 0.0f, 1.0f},
     };
+
+    if (!vertices) {
+        vertices = gui->mVertices;
+    }
 
     for (uint32_t i = 0; i < arraylen(positions); i++) {
         vertices[i].xyz = mvp * positions[i];
+        total += vertices[i].xyz;
     }
+    total /= arraylen(positions);
+    return total;
 }
 
 void Camera_ZoomIn(void)
@@ -550,16 +554,21 @@ static void DrawMap(void)
 
     glUseProgram(shaderId);
     glUniform1i(GetUniform("u_numLights"), mapData->mLights.size());
+
     for (uint32_t i = 0; i < mapData->mLights.size(); ++i) {
-        glUniform1f(GetUniform(va("lights[%i].brightness", i)), mapData->mLights[i].brightness);
-        glUniform2f(GetUniform(va("lights[%i].origin", i)), mapData->mLights[i].origin[0], mapData->mLights[i].origin[1]);
+        glm::vec3 pos = ConvertCoords(v,
+            { mapData->mLights[i].origin[0] - (mapData->mWidth * 0.5f), mapData->mHeight - mapData->mLights[i].origin[1] }, 0.5f, 0.5f);
+
+        glUniform2f(GetUniform(va("lights[%i].intensity", i)), mapData->mLights[i].brightness, mapData->mLights[i].range);
+        glUniform2f(GetUniform(va("lights[%i].origin", i)), pos.x, pos.y);
         glUniform3f(GetUniform(va("lights[%i].color", i)), mapData->mLights[i].color[0], mapData->mLights[i].color[1],
             mapData->mLights[i].color[2]);
     }
     glUniformMatrix4fv(GetUniform("u_ViewProjection"), 1, GL_FALSE, glm::value_ptr(gui->mViewProjection));
     glUniform3f(GetUniform("u_AmbientColor"), mapData->mAmbientColor.r, mapData->mAmbientColor.g, mapData->mAmbientColor.b);
     glUniform1f(GetUniform("u_AmbientIntensity"), mapData->mAmbientIntensity);
-    glUniform1i(GetUniform("u_SpriteSheet"), 0);
+    glUniform1i(GetUniform("u_DarkAmbience"), mapData->mDarkAmbience);
+    glUniform1i(GetUniform("u_DiffuseMap"), project->texData->mId);
 
     glActiveTexture(GL_TEXTURE0);
     project->texData->Bind();
@@ -567,14 +576,13 @@ static void DrawMap(void)
     v = gui->mVertices;
     for (uint32_t y = 0; y < mapData->mHeight; y++) {
         for (uint32_t x = 0; x < mapData->mWidth; x++) {
-            ConvertCoords(v, { x - (mapData->mWidth * 0.5f), mapData->mHeight - y });
+            const glm::vec3 pos = ConvertCoords(v, { x - (mapData->mWidth * 0.5f), mapData->mHeight - y }, 0.5f, 0.5f);
 
             if (numVertices + 4 >= FRAME_VERTICES) {
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Vertex) * numVertices, gui->mVertices);
                 glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
                 glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, NULL);
                 v = gui->mVertices;
-                mapData->CalcLighting(v, FRAME_VERTICES);
                 numVertices = 0;
                 numIndices = 0;
             }
@@ -604,7 +612,7 @@ static void DrawMap(void)
                 if (editor->mode == MODE_TILE && tileMode.curX == x && tileMode.curY == y) {
                     v[i].color[3] = 0.0f;
                 }
-                v[i].worldPos = { x, y };
+                v[i].worldPos = pos;
             }
             CalcVertexNormals(v);
             v += 4;
@@ -623,51 +631,6 @@ static void DrawMap(void)
 
     if (project->texData->mId != 0) {
         project->texData->Unbind();
-    }
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    glUseProgram(0);
-}
-
-static void DrawGraph(void)
-{
-    const uint64_t width = gui->mWindowWidth * 0.5f;
-    const uint64_t height = gui->mWindowHeight * 0.5f;
-    Vertex *v;
-    uint32_t numVertices, numIndices;
-
-    numVertices = 0;
-    numIndices = 0;
-    v = gui->mVertices;
-
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-    for (uint64_t y = 0; y < height; ++y) {
-        for (uint64_t x = 0; x < width; ++x) {
-            ConvertCoords(v, { x, y });
-
-            if (numVertices + 4 >= FRAME_VERTICES) {
-                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Vertex) * numVertices, gui->mVertices);
-                glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
-                glDrawElements(GL_LINES, numIndices, GL_UNSIGNED_INT, NULL);
-                v = gui->mVertices;
-                numVertices = 0;
-                numIndices = 0;
-            }
-            
-            numIndices += 6;
-            numVertices += 4;
-            v += 4;
-        }
-    }
-    if (numVertices || numIndices) {
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(Vertex) * numVertices, gui->mVertices);
-        glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(uint32_t) * numIndices, gui->mIndices);
-        glDrawElements(GL_LINES, numIndices, GL_UNSIGNED_INT, NULL);
-        v = gui->mVertices;
-        numVertices = 0;
-        numIndices = 0;
     }
 
     glBindVertexArray(0);

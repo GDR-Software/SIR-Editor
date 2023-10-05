@@ -23,7 +23,7 @@ void main() {
    v_TexCoords = a_TexCoords;
    v_Color = a_Color;
    v_Alpha = a_Alpha;
-   v_FragPos = vec3(mat4(1.0) * vec4(a_Position, 1.0));
-   v_Normal = a_Normal;
+   v_FragPos = vec3(u_ViewProjection * vec4(a_Position, 1.0));
+   v_Normal = vec3(u_ViewProjection * vec4(a_Position, 1.0));
    gl_Position = u_ViewProjection * vec4(a_Position, 1.0);
 }

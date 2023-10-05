@@ -28,8 +28,8 @@ void CTexture::Load(const std::string& path)
     LoadFile(path.c_str(), (void **)&mFileBuf);
 
     Printf("[CTexture::Load] Initializing OpenGL texture object...");
-    if (mName != GetFilename(path.c_str()))
-        mName = GetFilename(path.c_str());
+    if (mName != path)
+        mName = path;
     
     switch (gameConfig->mTextureFiltering) {
     case 0: // Nearest

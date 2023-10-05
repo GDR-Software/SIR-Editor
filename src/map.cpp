@@ -152,6 +152,7 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 return false;
             }
             tileset->texData->mName = tok;
+            tileset->texData->Load(tok);
         }
         //
         // tileHeight <height>
@@ -163,6 +164,17 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 return false;
             }
             tileset->tileHeight = (uint32_t)atoi(tok);
+        }
+        //
+        // texIndex <index>
+        //
+        else if (!N_stricmp(tok, "texIndex")) {
+            tok = COM_ParseExt(text, qfalse);
+            if (!tok[0]) {
+                COM_ParseError("missing parameter for map tile texIndex");
+                return false;
+            }
+            tmpData->mTiles.back().index = (int32_t)atoi(tok);
         }
         //
         // id <entityid>
@@ -284,33 +296,21 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 return false;
             }
 
-            tok = COM_ParseExt(text, qfalse);
-            if (!tok[0]) {
-                COM_ParseError("missing parameter for color.r");
+            if (!Parse1DMatrix(text, 4, tmpData->mLights.back().color)) {
+                COM_ParseError("failed to parse light color");
                 return false;
             }
-            tmpData->mLights.back().color[0] = static_cast<byte>(clamp(atoi(tok), 0, 255));
-
+        }
+        //
+        // range <range>
+        //
+        else if (!N_stricmp(tok, "range")) {
             tok = COM_ParseExt(text, qfalse);
             if (!tok[0]) {
-                COM_ParseError("missing parameter for color.g");
+                COM_ParseError("missing parameter for light range");
                 return false;
             }
-            tmpData->mLights.back().color[1] = static_cast<byte>(clamp(atoi(tok), 0, 255));
-
-            tok = COM_ParseExt(text, qfalse);
-            if (!tok[0]) {
-                COM_ParseError("missing parameter for color.b");
-                return false;
-            }
-            tmpData->mLights.back().color[2] = static_cast<byte>(clamp(atoi(tok), 0, 255));
-
-            tok = COM_ParseExt(text, qfalse);
-            if (!tok[0]) {
-                COM_ParseError("missing parameter for color.a");
-                return false;
-            }
-            tmpData->mLights.back().color[3] = static_cast<byte>(clamp(atoi(tok), 0, 255));
+            tmpData->mLights.back().range = atof(tok);
         }
         //
         // origin <x y elevation>
@@ -321,26 +321,12 @@ static bool ParseChunk(const char **text, CMapData *tmpData)
                 return false;
             }
 
-            tok = COM_ParseExt(text, qfalse);
-            if (!tok[0]) {
-                COM_ParseError("missing parameter for origin.x");
+            vec3_t origin;
+            if (!Parse1DMatrix(text, 3, origin)) {
+                COM_ParseError("failed to parse light origin");
                 return false;
             }
-            tmpData->mLights.back().origin[0] = static_cast<float>(atof(tok));
-
-            tok = COM_ParseExt(text, qfalse);
-            if (!tok[0]) {
-                COM_ParseError("missing parameter for origin.y");
-                return false;
-            }
-            tmpData->mLights.back().origin[1] = static_cast<float>(atof(tok));
-            
-            tok = COM_ParseExt(text, qfalse);
-            if (!tok[0]) {
-                COM_ParseError("missing parameter for origin.elevation");
-                return false;
-            }
-            tmpData->mLights.back().origin[2] = static_cast<float>(atof(tok));
+            VectorCopy(tmpData->mLights.back().origin, origin);
         }
         else {
             COM_ParseWarning("unrecognized token '%s'", tok);
@@ -417,7 +403,7 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
             tmpData->mAmbientIntensity = atof(tok);
         }
         else if (!N_stricmp(tok, "ambientColor")) {
-            if (!Parse1DMatrix(text, 3, &mapData->mAmbientColor[0])) {
+            if (!Parse1DMatrix(text, 3, &tmpData->mAmbientColor[0])) {
                 COM_ParseError("failed to parse map ambient color");
                 return false;
             }
@@ -444,7 +430,7 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
                 COM_ParseError("missing parameter for map numCheckpoints");
                 return false;
             }
-            tmpData->mCheckpoints.reserve(static_cast<size_t>(atoi(tok)));
+            tmpData->mCheckpoints.reserve((size_t)atoi(tok));
         }
         else if (!N_stricmp(tok, "numSpawns")) {
             tok = COM_ParseExt(text, qfalse);
@@ -452,7 +438,7 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
                 COM_ParseError("missing parameter for map numSpawns");
                 return false;
             }
-            tmpData->mSpawns.reserve(static_cast<size_t>(atoi(tok)));
+            tmpData->mSpawns.reserve((size_t)atoi(tok));
         }
         else if (!N_stricmp(tok, "numLights")) {
             tok = COM_ParseExt(text, qfalse);
@@ -460,7 +446,7 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
                 COM_ParseError("missing parameter for map numLights");
                 return false;
             }
-            tmpData->mLights.reserve(static_cast<size_t>(atoi(tok)));
+            tmpData->mLights.reserve((size_t)atoi(tok));
         }
         else if (!N_stricmp(tok, "numTiles")) {
             tok = COM_ParseExt(text, qfalse);
@@ -468,7 +454,7 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
                 COM_ParseError("missing parameter for map numTiles");
                 return false;
             }
-            tmpData->mTiles.reserve(static_cast<size_t>(atoi(tok)));
+            tmpData->mTiles.reserve((size_t)atoi(tok));
         }
         else if (!N_stricmp(tok, "numEntities")) {
             tok = COM_ParseExt(text, qfalse);
@@ -476,7 +462,10 @@ static bool ParseMap(const char **text, const char *path, CMapData *tmpData)
                 COM_ParseError("missing parameter for map numEntities");
                 return false;
             }
-            tmpData->mEntities.reserve(static_cast<size_t>(atoi(tok)));
+            tmpData->mEntities.reserve((size_t)atoi(tok));
+        }
+        else {
+            COM_ParseWarning("unrecognized token: '%s'", tok);
         }
     }
     return true;
@@ -504,18 +493,6 @@ void Map_LoadFile(IDataStream *file, const char *ext, const char *rpath)
     }
     else {
         *mapData = tmpData;
-        // we got a tileset from that
-        if (project->tileset->tiles.size()) {
-            std::string path;
-            if (!FileExists(project->tileset->texData->mName.c_str())) { // probably in Data/ directory
-                path = gameConfig->mEditorPath + project->tileset->texData->mName;
-            }
-            else {
-                path = project->tileset->texData->mName;
-            }
-            project->tileset->texData->Load(path);
-            project->tileset->GenerateTiles();
-        }
         mapData->mPath = rpath;
         SDL_SetWindowTitle(gui->mWindow, mapData->mName.c_str());
     }
@@ -571,15 +548,17 @@ static void SaveLights(IDataStream *file)
 {
     char buf[1024];
 
+    Printf("Saving %lu lights...", mapData->mLights.size());
     for (const auto& it : mapData->mLights) {
         snprintf(buf, sizeof(buf),
             "{\n"
             "classname map_light\n"
             "brightness %f\n"
-            "pos %f %f %f\n"
-            "color %f %f %f %f\n"
+            "range %f\n"
+            "origin ( %u %u %u )\n"
+            "color ( %f %f %f %f )\n"
             "}\n"
-        , it.brightness, it.origin[0], it.origin[1], it.origin[2], it.color[0], it.color[1], it.color[2], it.color[3]);
+        , it.brightness, it.range, it.origin[0], it.origin[1], it.origin[2], it.color[0], it.color[1], it.color[2], it.color[3]);
         file->Write(buf, strlen(buf));
     }
 }
@@ -596,7 +575,7 @@ static void SaveTiles(IDataStream *file)
             "classname map_tile\n"
             "texIndex %i\n"
             "flags %x\n"
-            "sides ( %i %i %i %i %i )"
+            "sides ( %i %i %i %i %i )\n"
             "texcoords ( ( %f %f ) ( %f %f ) ( %f %f ) ( %f %f ) )\n"
             "}\n"
         , it.index,
@@ -828,22 +807,14 @@ CalcVertexNormals: calculates normals for a single quad
 void CalcVertexNormals(Vertex *quad)
 {
     vec3_t vtx1, vtx2;
+    vec3_t normal;
 
     VectorSubtract(quad[1].xyz, quad[0].xyz, vtx1);
     VectorSubtract(quad[2].xyz, quad[0].xyz, vtx2);
-    CrossProduct(vtx1, vtx2, &quad[0].normal[0]);
+    CrossProduct(vtx1, vtx2, normal);
+    VectorNormalize(normal, normal);
 
-    VectorSubtract(quad[2].xyz, quad[1].xyz, vtx1);
-    VectorSubtract(quad[3].xyz, quad[1].xyz, vtx2);
-    CrossProduct(vtx1, vtx2, &quad[1].normal[0]);
-
-    VectorSubtract(quad[0].xyz, quad[2].xyz, vtx1);
-    VectorSubtract(quad[3].xyz, quad[2].xyz, vtx2);
-    CrossProduct(vtx1, vtx2, &quad[2].normal[0]);
-
-    VectorSubtract(quad[1].xyz, quad[3].xyz, vtx1);
-    VectorSubtract(quad[2].xyz, quad[3].xyz, vtx2);
-    CrossProduct(vtx1, vtx2, &quad[3].normal[0]);
+    VectorCopy(quad[0].normal, normal);
 }
 
 void CMapData::CalcLighting(Vertex *vertices, uint32_t numVertices)

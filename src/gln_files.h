@@ -126,8 +126,9 @@ typedef enum {
 
 typedef struct {
     vec4_t color;
-    float origin[3];
+    uvec3_t origin;
     float brightness;
+    float range;
     lighttype_t type;
 } maplight_t;
 

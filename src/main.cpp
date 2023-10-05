@@ -1,10 +1,5 @@
 #include "gln.h"
 
-#define FRAME_QUADS 0x8000
-#define FRAME_VERTICES (FRAME_QUADS*4)
-#define FRAME_INDICES (FRAME_QUADS*6)
-
-
 static void GenIndexes(void)
 {
     gui->mIndices = (uint32_t *)GetClearedMemory(sizeof(*gui->mIndices) * (FRAME_QUADS * 6));

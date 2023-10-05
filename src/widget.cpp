@@ -154,14 +154,16 @@ static INLINE void GET_VAR_MENU(bool& change, T& value, const U& set, const char
 }
 
 typedef struct {
-    float x;
-    float y;
+    int x;
+    int y;
     int elevation;
+    float range;
     float brightness;
     glm::vec4 color;
     bool xChanged;
     bool yChanged;
     bool brightnessChanged;
+    bool rangeChanged;
     bool colorChanged;
 } lightGlobals_t;
 
@@ -748,10 +750,14 @@ static void Edit_Lighting(void)
     if (ImGui::Begin("Edit Light", &open)) {
         GET_VAR(g->xChanged, "x", g->x);
         GET_VAR(g->yChanged, "y", g->y);
-        
-        if (ImGui::SliderFloat("brightness", &g->brightness, 0, 1)) {
-            g->brightnessChanged = true;
-        }
+        GET_VAR(g->brightnessChanged, "brightness", g->brightness);
+        GET_VAR(g->rangeChanged, "range", g->range);
+
+        g->x = clamp(g->x, 0, mapData->mWidth);
+        g->y = clamp(g->y, 0, mapData->mHeight);
+        g->brightness = clamp(g->brightness, 0.1f, 128.0f);
+        g->range = clamp(g->range, 1.0f, 256.0f);
+
         if (ImGui::SliderFloat("R", &g->color[0], 0, 1)) {
             g->colorChanged = true;
         }
@@ -769,6 +775,7 @@ static void Edit_Lighting(void)
             UPDATE_VAR(l->origin[0], g->x, g->xChanged);
             UPDATE_VAR(l->origin[1], g->y, g->yChanged);
             UPDATE_VAR(l->brightness, g->brightness, g->brightnessChanged);
+            UPDATE_VAR(l->range, g->range, g->rangeChanged);
             if (g->colorChanged) {
                 memcpy(l->color, &g->color[0], sizeof(vec4_t));
                 g->colorChanged = false;
