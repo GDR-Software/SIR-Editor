@@ -6,7 +6,8 @@
 class CTileset
 {
 public:
-    std::shared_ptr<CTexture> texData;
+    std::shared_ptr<CTexture> texData; // diffuseMap, technically
+    std::shared_ptr<CTexture> normalData;
     std::vector<maptile_t> tiles;
     uint32_t tileCountX;
     uint32_t tileCountY;

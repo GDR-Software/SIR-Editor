@@ -11,17 +11,18 @@ typedef struct {
 
 char mapname[1024];
 std::unique_ptr<CMapData> mapData;
-static char curmapfile[1024];
-static bool first = false;
 
 void Map_New(void)
 {
     mapData->Clear();
     mapData->mPath = pwdString.string() + "/Data/untitled-map.map";
     mapData->mName = "untitled-map";
+#ifndef BMFC
     SDL_SetWindowTitle(gui->mWindow, mapData->mName.c_str());
+#endif
 }
 
+#ifndef BMFC
 typedef enum {
     CHUNK_CHECKPOINT,
     CHUNK_SPAWN,
@@ -492,6 +493,8 @@ void Map_LoadFile(IDataStream *file, const char *ext, const char *rpath)
         Printf("Error: failed to load map");
     }
     else {
+        N_strncpyz(mapname, GetFilename(rpath), sizeof(mapname));
+        project->tileset->GenerateTiles();
         *mapData = tmpData;
         mapData->mPath = rpath;
         SDL_SetWindowTitle(gui->mWindow, mapData->mName.c_str());
@@ -649,70 +652,7 @@ void Map_Save(const char *filename)
     mapData->mModified = false;
 }
 
-static void AddLump(const void *data, uint64_t size, int lumpnum, mapheader_t *header, FileStream *file)
-{
-    lump_t *lump;
-
-    lump = &header->lumps[lumpnum];
-    lump->length = size;
-    lump->fileofs = file->GetPosition();
-
-    file->Write(data, PAD(size, sizeof(uint32_t)));
-}
-
-template<typename T>
-static void CopyLump(std::vector<T>& dest, uint64_t size, int lumpnum, mapheader_t *header)
-{
-    uint64_t length, ofs;
-
-    length = header->lumps[lumpnum].length;
-    ofs = header->lumps[lumpnum].fileofs;
-
-    if (length % size)
-        Error("BMF_LoadFile: funny lump size");
-    
-    dest.resize(length / size);
-    memcpy(dest.data(), (byte *)header + ofs, length);
-}
-
-void BMF_WriteFile(const char *filename)
-{
-    char rpath[MAX_OSPATH*2+1];
-    FileStream file;
-    bmf_t out;
-    uint64_t pos;
-
-    snprintf(rpath, sizeof(rpath), "%s%s", gameConfig->mEditorPath.c_str(), filename);
-    if (!GetExtension(filename) || N_stricmp(GetExtension(filename), "map")) {
-        snprintf(rpath, sizeof(rpath), "%s%s.bmf", gameConfig->mEditorPath.c_str(), filename);
-    }
-
-    if (!file.Open(filename, "w")) {
-        Error("BMF_WriteFile: failed to open file '%s' in write mode", rpath);
-    }
-
-    out.ident = LEVEL_IDENT;
-    out.version = LEVEL_VERSION;
-
-    out.map.ident = MAP_IDENT;
-    out.map.version = MAP_VERSION;
-
-    file.Write(&out.ident, sizeof(out.ident));
-    file.Write(&out.version, sizeof(out.version));
-
-    // overwritten later
-    pos = file.GetPosition();
-    file.Write(&out.map, sizeof(mapheader_t));
-
-    AddLump(mapData->mTiles.data(), sizeof(maptile_t) * mapData->mTiles.size(), LUMP_TILES, &out.map, &file);
-    AddLump(mapData->mCheckpoints.data(), sizeof(mapcheckpoint_t) * mapData->mCheckpoints.size(), LUMP_CHECKPOINTS, &out.map, &file);
-    AddLump(mapData->mSpawns.data(), sizeof(mapspawn_t) * mapData->mSpawns.size(), LUMP_SPAWNS, &out.map, &file);
-    AddLump(mapData->mLights.data(), sizeof(maptile_t) * mapData->mLights.size(), LUMP_LIGHTS, &out.map, &file);
-
-    file.Seek(pos, SEEK_SET);
-    file.Write(&out.map, sizeof(mapheader_t));
-
-}
+#endif
 
 CMapData::CMapData(void)
 {
@@ -733,7 +673,7 @@ CMapData::~CMapData()
 {
 }
 
-
+#ifndef BMFC
 static void ConvertCoords(Vertex *vertices, const glm::vec2& pos)
 {
     glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f));
@@ -815,6 +755,9 @@ void CalcVertexNormals(Vertex *quad)
     VectorNormalize(normal, normal);
 
     VectorCopy(quad[0].normal, normal);
+    VectorCopy(quad[1].normal, normal);
+    VectorCopy(quad[2].normal, normal);
+    VectorCopy(quad[3].normal, normal);
 }
 
 void CMapData::CalcLighting(Vertex *vertices, uint32_t numVertices)
@@ -826,6 +769,7 @@ void CMapData::CalcLighting(Vertex *vertices, uint32_t numVertices)
         LightingAtVertex(&vt->xyz[0], &vt->normal[0], &vt->color[0], &mapData->mAmbientColor[0], mapData->mAmbientIntensity);
     }
 }
+#endif
 
 static void SetTileCheckpoints(void)
 {
@@ -891,7 +835,7 @@ static void CopyIndices(void)
 
 const CMapData& CMapData::operator=(const CMapData& other)
 {
-    tmpOther = eastl::addressof(other);
+    tmpOther = std::addressof(other);
     Clear();
     
     mWidth = other.mWidth;
@@ -928,6 +872,7 @@ const CMapData& CMapData::operator=(const CMapData& other)
     
     return *this;
 }
+#ifndef BMFC
 /*
 map vertices and indices aren't saved to the text based .map format
 */
@@ -981,6 +926,7 @@ void CMapData::CalcDrawData(void)
     calculateIndices(mIndices);
     calculateVertices(mVertices, mWidth, mHeight);
 }
+#endif
 
 void CMapData::SetMapSize(uint32_t width, uint32_t height)
 {
@@ -1024,6 +970,7 @@ void CMapData::Clear(void)
     mSpawns.emplace_back(s);
 }
 
+#ifndef BMFC
 /*
 CheckAutoSave: if mAutoSaveTime (in minutes) have passed since last edit, and the map hasn't been saved yet, save it
 */
@@ -1052,3 +999,4 @@ void CheckAutoSave(void)
         s_start = now;
     }
 }
+#endif

@@ -18,12 +18,14 @@ out vec3 v_FragPos;
 out vec3 v_Normal;
 
 void main() {
+   mat4 modelMatrix = mat4(1.0);
+
    v_Position = a_Position;
    v_WorldPos = a_WorldPos;
    v_TexCoords = a_TexCoords;
    v_Color = a_Color;
    v_Alpha = a_Alpha;
-   v_FragPos = vec3(u_ViewProjection * vec4(a_Position, 1.0));
-   v_Normal = vec3(u_ViewProjection * vec4(a_Position, 1.0));
+   v_FragPos = vec3(modelMatrix * vec4(a_Position, 1.0));
+   v_Normal = mat3(transpose(inverse(modelMatrix))) * a_Normal;
    gl_Position = u_ViewProjection * vec4(a_Position, 1.0);
 }

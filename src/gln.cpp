@@ -17,7 +17,7 @@ int parm_compression;
 int myargc;
 char **myargv;
 
-
+#ifndef NDEBUG
 static struct backtrace_state *bt_state = NULL;
 
 static void bt_error_callback( void *data, const char *msg, int errnum )
@@ -30,13 +30,14 @@ static void bt_syminfo_callback( void *data, uintptr_t pc, const char *symname,
 {
 	if (symname != NULL) {
 		int status;
-		// FIXME: sucks that __cxa_demangle() insists on using malloc().. but so does printf()
-		char* name = abi::__cxa_demangle(symname, NULL, NULL, &status);
-		if (name != NULL) {
+		// [glnomad] 10/6/2023: fixed buffer instead of malloc'd buffer, risky however
+		char name[2048];
+		size_t length = sizeof(name);
+		abi::__cxa_demangle(symname, name, &length, &status);
+		if (name[0]) {
 			symname = name;
 		}
 		Printf("  %zu %s", pc, symname);
-		free(name);
 	} else {
         Printf("  %zu (unknown symbol)", pc);
 	}
@@ -51,9 +52,11 @@ static int bt_pcinfo_callback( void *data, uintptr_t pc, const char *filename, i
 
 	if (function != NULL) {
 		int status;
-		// FIXME: sucks that __cxa_demangle() insists on using malloc()..
-		char* name = abi::__cxa_demangle(function, NULL, NULL, &status);
-		if (name != NULL) {
+		// [glnomad] 10/6/2023: fixed buffer instead of malloc'd buffer, risky however
+		char name[2048];
+		size_t length = sizeof(name);
+		abi::__cxa_demangle(function, name, &length, &status);
+		if (name[0]) {
 			function = name;
 		}
 
@@ -62,7 +65,6 @@ static int bt_pcinfo_callback( void *data, uintptr_t pc, const char *filename, i
 			filename = fileNameSrc+1; // I want "neo/bla/blub.cpp:42"
 		}
         Printf("  %zu %s:%d %s", pc, filename, lineno, function);
-		free(name);
 	}
 
 	return 0;
@@ -102,6 +104,7 @@ static void do_backtrace(void)
         Error("(No backtrace because libbacktrace state is NULL)");
 	}
 }
+#endif
 
 void assert_failure(const char *expr, const char *file, const char *func, unsigned line)
 {
@@ -189,6 +192,7 @@ float LittleFloat(float f)
 	return out.f;
 }
 
+#ifndef BMFC
 bool LoadJSON(json& data, const std::string& path)
 {
 	FileStream file;
@@ -209,6 +213,7 @@ bool LoadJSON(json& data, const std::string& path)
 	file.Close();
 	return true;
 }
+#endif
 
 void Exit(void)
 {
@@ -233,6 +238,8 @@ const char *va(const char *fmt, ...)
 	return buf;
 }
 
+static FILE *logfile = NULL;
+
 void Error(const char *fmt, ...)
 {
     va_list argptr;
@@ -242,7 +249,16 @@ void Error(const char *fmt, ...)
     vsnprintf(buffer, sizeof(buffer), fmt, argptr);
     va_end(argptr);
 
+	if (!logfile) {
+		logfile = fopen("logfile.log", "w");
+		if (!logfile) {
+			fprintf(stderr, "Warning: failed to open logfile\n");
+		}
+	}
+
+#ifndef NDEBUG
 	do_backtrace();
+#endif
 
 #ifndef BMFC
 	Window::Print("\n********** ERROR **********");
@@ -252,6 +268,21 @@ void Error(const char *fmt, ...)
 	fprintf(stderr, "\n********** ERROR **********\n");
 	fprintf(stderr, "%s\n", buffer);
 	fprintf(stderr, "Exiting app (code : -1)\n");
+
+	if (logfile) {
+	#ifdef UNICODE
+		fwprintf(logfile, L"\n********** ERROR **********\n");
+		fwprintf(logfile, L"%s\n", buffer);
+		fwprintf(logfile, L"Exiting app (code : -1)\n");
+		fflush(logfile);
+	#else
+		fprintf(logfile, "\n********** ERROR **********\n");
+		fprintf(logfile, "%s\n", buffer);
+		fprintf(logfile, "Exiting app (code : -1)\n");
+		fflush(logfile);
+	#endif
+		fclose(logfile);
+	}
 
 	fflush(NULL);
 
@@ -271,6 +302,13 @@ void Printf(const char *fmt, ...)
 	Window::Print("%s", buffer);
 #endif
 	fprintf(stdout, "%s\n", buffer);
+	if (logfile) {
+	#ifdef UNICODE
+		fwprintf(logfile L"%s\n", buffer);
+	#else
+		fprintf(logfile, "%s\n", buffer);
+	#endif
+	}
 }
 
 static inline const char *bzip2_strerror(int err)
@@ -1144,6 +1182,7 @@ uint64_t FileLength(FILE *fp)
     return end;
 }
 
+#ifndef BMFC
 const char *FilterToString(uint32_t filter)
 {
     switch (filter) {
@@ -1209,3 +1248,5 @@ uint32_t StrToFormat(const char *str)
 	// None
     return 0;
 }
+#endif
+

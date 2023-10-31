@@ -44,6 +44,7 @@ public:
     uint32_t mWindowHeight;
 
     float mCameraZoom;
+    float mCameraZoomInverse;
     float mCameraRotation;
     glm::vec3 mCameraPos;
 

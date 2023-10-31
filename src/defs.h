@@ -43,6 +43,7 @@ inline const char *WtoA( const LPWSTR s )
     #endif
 #endif
 
+#ifndef BMFC
 using json = nlohmann::json;
 using string_t = eastl::basic_string<char, heap_allocator>;
 template<typename T>
@@ -51,6 +52,7 @@ template<typename T>
 using list_t = eastl::list<T, heap_allocator>;
 template<typename T>
 using stack_t = eastl::stack<T, vector_t<T>>;
+#endif
 
 typedef float vec_t;
 typedef vec_t vec2_t[2];
@@ -92,8 +94,10 @@ typedef uvec_t uvec4_t[4];
 
 #ifdef _WIN32
 #define PATH_SEP '\\'
+#define NEWLINE "\r\n"
 #else
 #define PATH_SEP '/'
+#define NEWLINE "\n"
 #endif
 
 #ifndef __BYTEBOOL__

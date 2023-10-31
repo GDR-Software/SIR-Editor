@@ -849,9 +849,14 @@ static void Edit_Tileset(void)
         CHECK_VAR(g->tileHeight, tileset->tileHeight, !g->tileHeightChanged && !g->changed);
         CHECK_VAR(g->tileWidth, tileset->tileWidth, !g->tileWidthChanged && !g->changed);
 
-        if (ButtonWithTooltip(va("Texture Path: %s", tileset->texData->mName.size() ? tileset->texData->mName.c_str() : "None"),
-        "Change the texture path of the current tileset")) {
-            ImGuiFileDialog::Instance()->OpenDialog("SelectTexturePathDlg", "Select File", ".png, .bmp, .jpeg, .tga, .pcx, .*", gameConfig->mEditorPath);
+        if (ButtonWithTooltip(va("(Diffuse) Texture Path: %s", tileset->texData->mName.size() ? tileset->texData->mName.c_str() : "None"),
+        "Change the (diffuse) texture path of the current tileset")) {
+            ImGuiFileDialog::Instance()->OpenDialog("SelectDiffuseTexturePathDlg", "Select File", ".png, .bmp, .jpeg, .tga, .pcx, .*", gameConfig->mEditorPath);
+            g->changed = true;
+        }
+        if (ButtonWithTooltip(va("(Normal) Texture Path: %s", tileset->normalData->mName.size() ? tileset->normalData->mName.c_str() : "None"),
+        "Change the (normal) texture path of the current tileset")) {
+            ImGuiFileDialog::Instance()->OpenDialog("SelectNormalTexturePathDlg", "Select File", ".png, .bmp, .jpeg, .tga, .pcx, .*", gameConfig->mEditorPath);
             g->changed = true;
         }
 
@@ -992,9 +997,10 @@ static void Edit_Map(void)
                 for (uint64_t i = 0; i < mapData->mLights.size(); i++) {
                     snprintf(buf, sizeof(buf),
                         "-------- light %lu --------\n"
-                        "coordinates: [%f, %f]\n"
+                        "coordinates: [%u, %u]\n"
+                        "range: %f\n"
                         "brightness: %f\n"
-                    , i, mapData->mLights[i].origin[0], mapData->mLights[i].origin[1], mapData->mLights[i].brightness);
+                    , i, mapData->mLights[i].origin[0], mapData->mLights[i].origin[1], mapData->mLights[i].range, mapData->mLights[i].brightness);
                     if (ItemWithTooltip(va("Light #%lu", i), buf)) {
                         g->editingLightIndex = i;
                         g->editingLight = true;
@@ -1089,10 +1095,18 @@ void Widgets_Draw(void)
     TileMode();
 
     configGlobals_t *g = &globals->config;
-    if (ImGuiFileDialog::Instance()->IsOpened("SelectTexturePathDlg")) {
-        if (ImGuiFileDialog::Instance()->Display("SelectTexturePathDlg", ImGuiWindowFlags_NoResize, FileDlgWindowSize, FileDlgWindowSize)) {
+    if (ImGuiFileDialog::Instance()->IsOpened("SelectDiffuseTexturePathDlg")) {
+        if (ImGuiFileDialog::Instance()->Display("SelectDiffuseTexturePathDlg", ImGuiWindowFlags_NoResize, FileDlgWindowSize, FileDlgWindowSize)) {
             if (ImGuiFileDialog::Instance()->IsOk()) {
                 project->tileset->texData->Load(ImGuiFileDialog::Instance()->GetFilePathName());
+            }
+            ImGuiFileDialog::Instance()->Close();
+        }
+    }
+    if (ImGuiFileDialog::Instance()->IsOpened("SelectNormalTexturePathDlg")) {
+        if (ImGuiFileDialog::Instance()->Display("SelectNormalTexturePathDlg", ImGuiWindowFlags_NoResize, FileDlgWindowSize, FileDlgWindowSize)) {
+            if (ImGuiFileDialog::Instance()->IsOk()) {
+                project->tileset->normalData->Load(ImGuiFileDialog::Instance()->GetFilePathName());
             }
             ImGuiFileDialog::Instance()->Close();
         }

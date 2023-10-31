@@ -8,29 +8,27 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdint.h>
+#ifndef BMFC
 #include "gl.h"
+#include <fstream>
 #include <SDL2/SDL.h>
+#include <EASTL/string.h>
+#include <EASTL/list.h>
+#include <EASTL/stack.h>
+#include <EASTL/allocator.h>
+#include <EASTL/array.h>
+#include "imgui.h"
+#include "imgui_impl_opengl3.h"
+#include "imgui_impl_sdl2.h"
+#endif
 #include <memory>
 #include <string>
 #include <fstream>
 #include <unordered_map>
 #include <glm/glm.hpp>
-#include "imgui.h"
-#include "imgui_impl_opengl3.h"
-#include "imgui_impl_sdl2.h"
 #include <math.h>
 
 #include <boost/thread.hpp>
-
-#include <EASTL/string.h>
-#include <EASTL/map.h>
-#include <EASTL/unordered_map.h>
-#include <EASTL/shared_ptr.h>
-#include <EASTL/unique_ptr.h>
-#include <EASTL/array.h>
-#include <EASTL/list.h>
-#include <EASTL/vector.h>
-#include <EASTL/stack.h>
 
 void Mem_Init(void);
 void Mem_Shutdown(void);
@@ -43,6 +41,7 @@ void *GetMemory(uint64_t size);
 void FreeMemory(void *ptr);
 char *CopyString(const char *s);
 
+#ifndef BMFC
 struct heap_allocator
 {
 	constexpr heap_allocator(void) noexcept { }
@@ -63,6 +62,7 @@ struct heap_allocator
 	inline void deallocate(void *p, size_t) const noexcept
     { FreeMemory(p); }
 };
+#endif
 
 template<typename T>
 class heap_allocator_template
@@ -85,7 +85,9 @@ public:
     { FreeMemory(p); }
 };
 
+#ifndef BMFC
 #include <nlohmann/json.hpp>
+#endif
 #include "defs.h"
 
 #define PAD(base, alignment) (((base)+(alignment)-1) & ~((alignment)-1))
@@ -98,7 +100,9 @@ void Printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 const char *CurrentDirName(void);
 const char *va(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 uint64_t LoadFile(const char *filename, void **buffer);
+#ifndef BMFC
 bool LoadJSON(json& data, const std::string& path);
+#endif
 void Exit(void);
 int GetParm(const char *parm);
 bool N_strcat(char *dest, size_t size, const char *src);
@@ -208,25 +212,27 @@ All the random shit I pulled from GtkRadiant into this project
 */
 #include "idatastream.h"
 #include "stream.h"
-#include "list.h"
-#include "idll.h"
 
 /*
 Editor-specific stuff
 */
 #include "gln_files.h"
+#ifndef BMFC
+#include "list.h"
+#include "idll.h"
 #include "command.h"
 #include "events.h"
 #include "gui.h"
 #include "preferences.h"
 #include "editor.h"
 #include "ImGuiFileDialog.h"
-#include "entity.h"
-#include "map.h"
-#include "parse.h"
 #include "Texture.h"
 #include "tileset.h"
 #include "project.h"
+#endif
+#include "entity.h"
+#include "map.h"
+#include "parse.h"
 
 #if 0
 #undef new

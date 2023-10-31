@@ -61,15 +61,16 @@ typedef struct {
 #define TILE2D_VERSION 0
 
 typedef struct {
-    uint32_t texIndex;
-    float texcoords[4][2];
+    vec2_t uv[4];
+    uint32_t index;
 } tile2d_sprite_t;
 
 typedef struct {
     uint32_t numTiles;
     uint32_t tileWidth;
     uint32_t tileHeight;
-    uint32_t hasTexture; // can only be false in the map editor
+    uint32_t tileCountX;
+    uint32_t tileCountY;
     uint32_t compression; // only for sprites
     uint64_t compressedSize; // only for sprites
     char texture[MAX_GDR_PATH]; // store a texture inside of a tileset
@@ -114,9 +115,10 @@ typedef struct {
 #define LUMP_CHECKPOINTS 1
 #define LUMP_SPAWNS 2
 #define LUMP_LIGHTS 3
-#define LUMP_TILESET 4
-
-#define NUMLUMPS 5
+#define LUMP_VERTICES 4
+#define LUMP_INDICES 5
+#define LUMP_SPRITES 6
+#define NUMLUMPS 7
 
 typedef enum {
     light_point = 0,
@@ -129,6 +131,9 @@ typedef struct {
     uvec3_t origin;
     float brightness;
     float range;
+    float linear;
+    float quadratic;
+    float constant;
     lighttype_t type;
 } maplight_t;
 
@@ -193,7 +198,6 @@ typedef struct {
 typedef struct {
     uint32_t ident;
     uint32_t version;
-    
     mapheader_t map;
     tile2d_header_t tileset;
 } bmf_t;

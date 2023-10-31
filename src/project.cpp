@@ -117,6 +117,7 @@ CProject::CProject(void)
 {
     tileset = std::make_shared<CTileset>();
     tileset->texData = std::make_shared<CTexture>();
+    tileset->normalData = std::make_shared<CTexture>();
     texData = tileset->texData;
     mModified = true;
 }

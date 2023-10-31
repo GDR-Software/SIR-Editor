@@ -350,6 +350,21 @@ Window::Window(void)
     mVertices = (Vertex *)GetMemory(sizeof(*mVertices) * FRAME_VERTICES);
     mIndices = (uint32_t *)GetMemory(sizeof(*mIndices) * FRAME_INDICES);
 
+    for (i = 0; i < FRAME_VERTICES; i += 4) {
+        const glm::vec4 positions[4] = {
+            { 0.5f,  0.5f, 0.0f, 1.0f},
+            { 0.5f, -0.5f, 0.0f, 1.0f},
+            {-0.5f, -0.5f, 0.0f, 1.0f},
+            {-0.5f,  0.5f, 0.0f, 1.0f},
+        };
+        mVertices[i + 0].xyz = positions[0];
+        mVertices[i + 1].xyz = positions[1];
+        mVertices[i + 2].xyz = positions[2];
+        mVertices[i + 3].xyz = positions[3];
+
+        CalcVertexNormals(&mVertices[i]);
+    }
+
     offset = 0;
     for (i = 0; i < FRAME_INDICES; i += 6) {
         mIndices[i + 0] = offset + 0;
@@ -387,10 +402,14 @@ Window::~Window()
     SDL_DestroyWindow(mWindow);
 }
 
-static glm::vec3 ConvertCoords(Vertex *vertices, const glm::vec2& pos, float height, float width)
+static glm::vec3 ConvertCoords(Vertex *vertices, const glm::vec2& pos, float height, float width, float scale = 1.0f)
 {
-    const glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f));
-    const glm::mat4 mvp = gui->mViewProjection * model;
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, 0.0f))
+                    * glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+    glm::mat4 mvp;
+
+    mvp = gui->mViewProjection * model;
+
     glm::vec3 total = glm::vec3(0.0f);
 
     const glm::vec4 positions[4] = {
@@ -415,13 +434,21 @@ static glm::vec3 ConvertCoords(Vertex *vertices, const glm::vec2& pos, float hei
 void Camera_ZoomIn(void)
 {
     gui->mCameraZoom -= gameConfig->mCameraZoomSpeed;
+    gui->mCameraZoomInverse += gameConfig->mCameraZoomSpeed;
     if (gui->mCameraZoom < 0.5f)
         gui->mCameraZoom = 0.5f;
+    if (gui->mCameraZoomInverse > 200)
+        gui->mCameraZoomInverse = 200;
 }
 
 void Camera_ZoomOut(void)
 {
     gui->mCameraZoom += gameConfig->mCameraZoomSpeed;
+    gui->mCameraZoomInverse -= gameConfig->mCameraZoomSpeed;
+    if (gui->mCameraZoom > 200)
+        gui->mCameraZoom = 200;
+    if (gui->mCameraZoomInverse < 0.1f)
+        gui->mCameraZoomInverse = 0.1f;
 }
 
 void Camera_RotateLeft(void)
@@ -567,8 +594,14 @@ static void DrawMap(void)
     glUniformMatrix4fv(GetUniform("u_ViewProjection"), 1, GL_FALSE, glm::value_ptr(gui->mViewProjection));
     glUniform3f(GetUniform("u_AmbientColor"), mapData->mAmbientColor.r, mapData->mAmbientColor.g, mapData->mAmbientColor.b);
     glUniform1f(GetUniform("u_AmbientIntensity"), mapData->mAmbientIntensity);
-    glUniform1i(GetUniform("u_DarkAmbience"), mapData->mDarkAmbience);
     glUniform1i(GetUniform("u_DiffuseMap"), project->texData->mId);
+    glUniform1f(GetUniform("u_CameraZoom"), gui->mCameraZoom);
+    
+    if (project->tileset->normalData->mId != 0) {
+        glUniform1i(GetUniform("u_NormalMap"), project->tileset->normalData->mId);
+        glActiveTexture(GL_TEXTURE1);
+        project->tileset->normalData->Bind();
+    }
 
     glActiveTexture(GL_TEXTURE0);
     project->texData->Bind();
@@ -614,7 +647,6 @@ static void DrawMap(void)
                 }
                 v[i].worldPos = pos;
             }
-            CalcVertexNormals(v);
             v += 4;
             numVertices += 4;
             numIndices += 6;
@@ -630,7 +662,13 @@ static void DrawMap(void)
     }
 
     if (project->texData->mId != 0) {
+        glActiveTexture(GL_TEXTURE0);
         project->texData->Unbind();
+    }
+    if (project->tileset->normalData->mId != 0) {
+        glActiveTexture(GL_TEXTURE1);
+        project->tileset->normalData->Unbind();
+        glActiveTexture(GL_TEXTURE0);
     }
 
     glBindVertexArray(0);

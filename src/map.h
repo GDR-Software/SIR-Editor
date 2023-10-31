@@ -7,6 +7,8 @@
 #define TILE_CHECKPOINT 0x2000
 #define TILE_SPAWN 0x4000
 
+struct Vertex;
+
 class CMapData
 {
 public:
